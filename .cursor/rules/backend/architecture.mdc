@@ -1,0 +1,81 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Go Radio Backend Architecture Patterns
+
+## Clean Architecture Implementation
+- Follow clean architecture principles with clear separation of concerns
+- Maintain strict dependency flow: Controllers -> Services -> Repositories
+- Keep business logic in services, data access in repositories
+- Use interfaces for dependency injection and testing
+
+## Layer Responsibilities
+- Controllers: Handle HTTP requests and responses
+- Services: Implement business logic and orchestration
+- Repositories: Manage data access and persistence
+- Models: Define data structures and validation
+- Middleware: Handle cross-cutting concerns
+- WebSocket: Manage real-time communication
+
+## Code Organization
+- Keep internal packages in `internal/` directory
+- Place public packages in `pkg/` directory
+- Store application entry points in `cmd/` directory
+- Maintain configuration in `internal/config`
+- Keep migrations in `migrations/` directory
+- Store playlist files in `playlists/` directory
+
+## Dependency Management
+- Use dependency injection for better testability
+- Initialize dependencies in main.go
+- Pass dependencies through constructors
+- Use interfaces for loose coupling
+
+## Event-Driven Architecture
+- Use EventBus pattern to decouple services and avoid circular dependencies
+- Implement event-driven communication between RadioService and WebSocketHandler
+- Store event bus implementation in `internal/events/event_bus.go`
+- Follow event-driven flow: Services → EventBus → EventHandlers → Clients
+
+### Event Types and Patterns
+- `EventSongChange`: Published when current song changes
+- `EventQueueUpdate`: Published when playlist queue updates
+- `EventPlaybackUpdate`: Published for real-time playback progress
+- `EventUserReaction`: Published when users send reactions
+- Use structured event payloads with timestamps and relevant data
+- Implement panic recovery in event handlers for reliability
+
+### Event Handling Best Practices
+- Subscribe to events in WebSocketHandler for real-time client updates
+- Use goroutines for non-blocking event processing
+- Implement mock event bus for testing services in isolation
+- Keep event handlers focused and lightweight
+- Use type-safe event publishing methods from EventBus
+
+### Event Bus Implementation
+- Centralized event management with thread-safe operations
+- Support for multiple handlers per event type
+- Automatic panic recovery in event handlers
+- Timestamp tracking for all events
+- Easy extensibility for new event types and handlers
+
+## Reaction System Architecture
+- Separate reaction handling from core radio functionality
+- Use dedicated ReactionController for HTTP endpoints
+- Implement reaction events through EventBus for real-time broadcasting
+- Store reaction controller in `internal/controllers/reaction_controller.go`
+- Follow same patterns as other controllers for consistency
+
+### Reaction Event Flow
+- Client sends reaction via WebSocket or HTTP POST
+- ReactionController validates and publishes EventUserReaction
+- EventBus broadcasts to all WebSocket clients
+- Clients display animated reactions with user attribution
+- Automatic cleanup after animation duration (3 seconds)
+
+### Reaction Data Structure
+- UserReactionEvent contains: user_id, emote, timestamp
+- Support 8 predefined emotes: heart, fire, rocket, clap, dance, party, star, thumbsup
+- Use millisecond timestamps for precise event ordering

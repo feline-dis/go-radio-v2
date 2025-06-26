@@ -1,0 +1,48 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Backend API Patterns and Endpoints
+
+## REST API Structure
+- All REST endpoints under `/api/v1/`
+- Admin endpoints under `/api/v1/admin/`
+- Use proper HTTP methods (GET, POST, PUT, DELETE)
+- Return appropriate HTTP status codes
+- Include error handling middleware
+
+## WebSocket
+- WebSocket endpoint at `/ws`
+- Handle real-time updates for:
+  - Currently playing song
+  - Playlist changes
+  - Player state changes
+  - User reactions
+
+## Authentication
+- Protect admin routes with authentication middleware
+- Use environment variables for sensitive data
+- Implement proper session management
+- Follow security best practices
+
+## Response Format
+- Use consistent JSON response structure
+- Include proper error messages
+- Maintain backward compatibility
+- Document API changes
+
+## Reaction API Endpoints
+- `POST /api/v1/reactions` - Send user reaction
+- Accept JSON payload: `{"user_id": "string", "emote": "string"}`
+- Return success response with status message
+- Validate required fields (user_id, emote)
+- Support WebSocket reaction messages with same structure
+
+## WebSocket Message Types
+- `song_change` - Song change notifications
+- `queue_update` - Queue updates
+- `playback_update` - Real-time playback progress
+- `user_reaction` - User reaction events
+- `ping/pong` - Connection keepalive
+- `get_playback_state` - Client state requests

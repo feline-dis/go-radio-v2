@@ -1,0 +1,58 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Backend Development and Testing Practices
+
+## Database Migrations
+- Use Atlas for database migrations
+- Store migrations in `migrations/` directory
+- Follow naming convention: `YYYYMMDDHHMMSS_description.sql`
+- Always test migrations locally before committing
+- Include both up and down migrations
+- Document schema changes in migration files
+- Use transactions for data migrations
+- Handle foreign key constraints appropriately
+- Test migrations with both empty and populated databases
+- Keep migrations idempotent when possible
+- Use `make migrate-up` to apply migrations
+- Use `make migrate-down` to rollback migrations
+
+## Testing Standards
+- Write unit tests for services and repositories
+- Include integration tests for API endpoints
+- Maintain test coverage above 80%
+- Use table-driven tests where appropriate
+- Mock external dependencies
+
+## Code Quality
+- Follow Go best practices and idioms
+- Use `gofmt` for code formatting
+- Run `golint` for code style checks
+- Document public APIs and types
+- Keep functions small and focused
+
+## Performance
+- Use connection pooling for database
+- Implement efficient S3 streaming
+- Handle graceful shutdown
+- Monitor memory usage
+- Profile critical paths
+
+## Development Workflow
+- Use Makefile for common tasks
+- Follow semantic versioning
+- Document breaking changes
+- Use Docker for development
+- Deploy to fly.io
+
+## Reaction System Development
+- Test reaction events with multiple WebSocket clients
+- Verify real-time broadcasting works correctly
+- Test reaction cleanup and memory management
+- Validate emote mapping and display
+- Test connection handling and reconnection logic
+- Use WebSocket testing tools for integration tests
+- Monitor reaction event throughput and performance
+- Test reaction system under load with multiple users

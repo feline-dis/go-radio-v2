@@ -1,0 +1,75 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Frontend Reaction System Patterns
+
+## Component Architecture
+- Separate reaction functionality from core radio player
+- Use dedicated ReactionContext for state management
+- Keep reaction components focused and reusable
+- Follow React best practices with hooks and TypeScript
+
+## Reaction Context (`ReactionContext.tsx`)
+- Manage WebSocket connection for reactions
+- Handle reaction state and animations
+- Provide sendReaction function for components
+- Auto-cleanup reactions after animation duration
+- Handle connection status and reconnection
+
+## Reaction Components
+
+### ReactionBar Component
+- Display grid of emote buttons (8 total)
+- Handle user interaction and selection feedback
+- Show connection status when disconnected
+- Generate temporary user IDs for demo purposes
+- Use Tailwind CSS for consistent styling
+
+### AnimatedEmotes Component
+- Display floating emote animations
+- Position emotes randomly on screen
+- Use CSS animations for smooth effects
+- Auto-cleanup after 3-second duration
+
+## Emote System
+- Support 8 predefined emotes: heart, fire, rocket, clap, dance, party, star, thumbsup
+- Map emote IDs to Unicode emoji characters
+- Use consistent naming and labeling
+- Provide hover tooltips for accessibility
+
+## Animation Patterns
+- CSS keyframe animations for floating effect
+- Smooth opacity and transform transitions
+- Random positioning for visual variety
+- Drop shadows for better visibility
+- Responsive sizing across screen sizes
+
+## WebSocket Integration
+- Separate WebSocket connection from radio player
+- Handle reaction-specific message types
+- Ignore non-reaction messages from radio context
+- Implement automatic reconnection logic
+- Provide connection status feedback
+
+## State Management
+- Track active reactions with timestamps
+- Manage WebSocket connection state
+- Handle reaction cleanup automatically
+- Use React hooks for state updates
+- Implement proper cleanup on unmount
+
+## Styling Guidelines
+- Use Tailwind CSS for all styling
+- Follow existing design system patterns
+- Maintain monospace font for consistency
+- Use appropriate z-index for overlay positioning
+- Ensure accessibility with proper contrast
+
+## Error Handling
+- Graceful degradation when WebSocket disconnected
+- Clear error messages for users
+- Automatic reconnection attempts
+- Fallback behavior for missing emotes
+- Proper TypeScript error handling
