@@ -46,6 +46,7 @@ type RadioService struct {
 	eventBus     EventBusInterface
 	state        *models.PlaybackState
 	mu           sync.RWMutex
+	randMu       sync.Mutex // For thread-safe random number generation
 }
 
 func NewRadioService(
@@ -309,6 +310,11 @@ func (s *RadioService) StartPlaybackLoop() error {
 	// Start the playback loop in a goroutine
 	log.Printf("[DEBUG] StartPlaybackLoop: Starting playback loop goroutine")
 	loopStarted := make(chan struct{})
+
+	// Make a copy of songs to avoid race conditions
+	songsCopy := make([]*models.Song, len(songs))
+	copy(songsCopy, songs)
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -317,7 +323,7 @@ func (s *RadioService) StartPlaybackLoop() error {
 		}()
 		log.Printf("[DEBUG] playbackLoop: Goroutine started")
 		close(loopStarted)
-		s.playbackLoop(songs)
+		s.playbackLoop(songsCopy)
 	}()
 
 	// Wait for goroutine to start
@@ -431,10 +437,13 @@ func (s *RadioService) playbackLoop(songs []*models.Song) {
 }
 
 func (s *RadioService) shuffleSongs(songs []*models.Song) []*models.Song {
+	s.randMu.Lock()
+	defer s.randMu.Unlock()
+
 	shuffled := make([]*models.Song, len(songs))
 	copy(shuffled, songs)
 
-	// Use a different seed each time for better randomization
+	// Use global rand package with mutex protection
 	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(shuffled), func(i, j int) {
 		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
