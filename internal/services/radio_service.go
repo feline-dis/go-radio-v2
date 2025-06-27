@@ -203,12 +203,22 @@ func (s *RadioService) GetQueueInfo() *models.QueueInfo {
 		}
 	}
 
+	// Calculate remaining time directly to avoid deadlock
+	var remaining float64
+	if s.state.CurrentSong != nil && !s.state.Paused {
+		elapsed := time.Since(s.state.StartTime)
+		remainingDuration := time.Duration(s.state.CurrentSong.Duration)*time.Second - elapsed
+		if remainingDuration > 0 {
+			remaining = remainingDuration.Seconds()
+		}
+	}
+
 	return &models.QueueInfo{
 		CurrentSong: s.state.CurrentSong,
 		NextSong:    s.state.NextSong,
 		Queue:       s.state.Queue,
 		Playlist:    s.state.CurrentPlaylist,
-		Remaining:   s.GetRemainingTime().Seconds(),
+		Remaining:   remaining,
 		StartTime:   s.state.StartTime,
 	}
 }
@@ -267,7 +277,10 @@ func (s *RadioService) StartPlaybackLoop() error {
 	log.Printf("[DEBUG] StartPlaybackLoop: Created new state with song: %s and queue size: %d",
 		newState.CurrentSong.Title, len(newState.Queue))
 
+	// Set state with proper synchronization
+	s.mu.Lock()
 	s.state = newState
+	s.mu.Unlock()
 
 	// Send initial song change notification
 	s.notifySongChange(songs[0], songs[1%len(songs)])
@@ -433,10 +446,11 @@ func (s *RadioService) shuffleSongs(songs []*models.Song) []*models.Song {
 func (s *RadioService) notifySongChange(currentSong, nextSong *models.Song) {
 	fmt.Println("Notifying song change:", currentSong.Title, nextSong.Title)
 	if s.eventBus != nil {
-		s.eventBus.PublishSongChange(currentSong, nextSong, s.GetQueueInfo())
-
-		// Also publish queue update
+		// Get queue info once and reuse it
 		queueInfo := s.GetQueueInfo()
+		s.eventBus.PublishSongChange(currentSong, nextSong, queueInfo)
+
+		// Also publish queue update with the same info
 		s.eventBus.PublishQueueUpdate(queueInfo)
 	}
 }
