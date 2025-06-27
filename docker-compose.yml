@@ -3,6 +3,7 @@ version: "3.8"
 services:
   # Backend Go service
   backend:
+    image: ghcr.io/${GITHUB_REPOSITORY:-feline-dis/go-radio-v2}/backend:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -16,6 +17,11 @@ services:
       - LOG_LEVEL=info
       - ENABLE_METRICS=true
       - METRICS_PORT=9090
+      - JWT_SECRET=${JWT_SECRET}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
     volumes:
       - go_radio_data:/app/data
     networks:
@@ -38,6 +44,7 @@ services:
 
   # Frontend React service
   frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY:-feline-dis/go-radio-v2}/frontend:${IMAGE_TAG:-latest}
     build:
       context: ./client
       dockerfile: Dockerfile
@@ -45,7 +52,7 @@ services:
     ports:
       - "3000:80"
     environment:
-      - VITE_API_BASE_URL=http://localhost:8080
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8080}
     depends_on:
       backend:
         condition: service_healthy

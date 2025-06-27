@@ -24,6 +24,80 @@ A modern web-based radio player built with Go backend and React frontend with re
 - Interactive reaction bar with animated emotes
 - Real-time user reaction display
 
+## 🚀 Quick Start
+
+### Option 1: Docker Compose (Recommended)
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd go-radio-v2
+
+# Run the deployment script
+./deploy.sh
+```
+
+### Option 2: Manual Setup
+```bash
+# Backend
+go mod download
+make migrate-up
+cd cmd/server && go run main.go
+
+# Frontend
+cd client
+npm install
+npm run dev
+```
+
+## 🐳 Deployment Options
+
+### 1. Local Development with Docker Compose
+```bash
+# Start all services
+make dev-compose
+
+# View logs
+make compose-logs
+
+# Stop services
+make compose-down
+```
+
+### 2. Production Deployment
+```bash
+# Deploy with nginx reverse proxy
+make prod-compose
+
+# Or use the deployment script
+./deploy.sh
+```
+
+### 3. Cloud Deployment (Fly.io)
+```bash
+# Deploy to Fly.io
+make fly-deploy
+
+# Or use GitHub Actions
+make github-deploy-fly
+```
+
+### 4. GitHub Actions CI/CD
+The project includes automated GitHub Actions workflows:
+
+- **Pull Request Checks**: Automated testing and security scanning
+- **Automatic Deployment**: Deploy to Fly.io on push to main branch
+- **Release Management**: Create releases with versioned Docker images
+
+```bash
+# Deploy to Fly.io
+make github-deploy
+
+# Create release
+make github-release
+```
+
+📖 **See [GitHub Actions Guide](docs/GITHUB_ACTIONS.md) for detailed CI/CD documentation**
+
 ## Audio Playback Features
 
 The radio player now supports full audio playback through the browser:
@@ -78,8 +152,26 @@ The radio player implements advanced synchronization to ensure all clients are a
 ### Prerequisites
 - Go 1.21+
 - Node.js 18+
+- Docker (for containerized development)
 - SQLite
 - Atlas (for database migrations)
+
+### Local Development
+```bash
+# Set up development environment
+make dev-setup
+
+# Start services
+make dev-compose
+
+# View logs
+make logs-backend
+make logs-frontend
+
+# Run tests
+make test
+make test-coverage
+```
 
 ### Backend Setup
 ```bash
@@ -104,52 +196,103 @@ npm install
 npm run dev
 ```
 
-4. Run database migrations:
-   ```bash
-   make migrate-up
-   ```
+## 🏗️ Architecture
 
-5. Run the application:
-   ```bash
-   make dev
-   ```
+### Docker Compose Setup
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Nginx Proxy   │    │   Frontend      │    │   Backend       │
+│   (Port 80/443) │    │   (Port 3000)   │    │   (Port 8080)   │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 │
+                    ┌─────────────────┐
+                    │   SQLite DB     │
+                    │   (Volume)      │
+                    └─────────────────┘
+```
 
-## Development
+### Service Communication
+- **Frontend** (React): Serves the web interface
+- **Backend** (Go): Provides API endpoints and WebSocket connections
+- **Nginx**: Reverse proxy that routes requests appropriately
+- **Database**: SQLite database stored in a Docker volume
 
-- Run tests: `make test`
-- Run tests with coverage: `make test-coverage`
-- Run linter: `make lint`
-- Build binary: `make build`
-- Run migrations: `make migrate-up`
+## 📋 Useful Commands
 
-## Deployment
+### Docker Compose
+```bash
+# Start services
+make compose-up
 
-1. Build and push Docker image:
-   ```bash
-   make docker-build
-   make docker-push
-   ```
+# Stop services
+make compose-down
 
-2. Deploy to fly.io:
-   ```bash
-   make deploy
-   ```
+# View logs
+make compose-logs
 
-## Database Schema
+# Restart services
+make compose-restart
 
-The application uses SQLite for storing metadata. The main tables are:
+# Clean up
+make compose-clean
+```
 
-- `songs`: Stores song metadata (title, artist, duration, etc.)
-- `playlists`: Stores playlist information (name, description)
-- `playlist_songs`: Manages the many-to-many relationship between playlists and songs
+### GitHub Actions
+```bash
+# Deploy to Fly.io
+make github-deploy
 
-## License
+# Create release
+make github-release
+```
 
-MIT
+### Database
+```bash
+# Create backup
+make db-backup
+
+# Restore from backup
+make db-restore
+
+# Run migrations
+make migrate-up
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+Create a `.env` file with your configuration:
+
+```bash
+# Required
+JWT_SECRET=your-secret-key-here
+AWS_ACCESS_KEY_ID=your-aws-access-key
+AWS_SECRET_ACCESS_KEY=your-aws-secret-key
+S3_BUCKET_NAME=your-s3-bucket
+YOUTUBE_API_KEY=your-youtube-api-key
+
+# Optional
+VITE_API_BASE_URL=http://localhost:8080
+```
+
+### GitHub Secrets (for CI/CD)
+Configure this secret in your GitHub repository:
+- `FLY_API_TOKEN`: Fly.io API token
+
+## 📚 Documentation
+
+- **[Quick Deployment Guide](QUICK_DEPLOY.md)** - Get started in 5 minutes
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Comprehensive deployment documentation
+- **[GitHub Actions Guide](docs/GITHUB_ACTIONS.md)** - CI/CD pipeline documentation
+- **[Event Bus Architecture](docs/EVENT_BUS_ARCHITECTURE.md)** - Backend architecture details
+- **[Reaction System](docs/REACTION_SYSTEM.md)** - Real-time reaction system documentation
 
 ## API Endpoints
 
 ### Public Endpoints
+- `GET /api/v1/health` - Health check
 - `GET /api/v1/queue` - Get current queue information
 - `GET /api/v1/now-playing` - Get currently playing song
 - `GET /api/v1/playlists/{youtube_id}/file` - Stream MP3 audio file
@@ -170,76 +313,6 @@ The application uses WebSocket for real-time updates:
   - `user_reaction` - User reaction events
   - `song_change` - Song change notifications
   - `queue_update` - Queue updates
-
-## Prerequisites
-
-- Docker
-- AWS S3 bucket
-- fly.io account (for deployment)
-
-## Project Structure
-
-```
-go-radio/
-├── cmd/
-│   ├── server/        # Main application entry point
-│   └── migrate/       # Database migration tool
-├── internal/
-│   ├── config/        # Configuration management
-│   ├── controllers/   # HTTP handlers
-│   │   └── reaction_controller.go  # Reaction API endpoints
-│   ├── events/        # Event bus system
-│   ├── middleware/    # HTTP middleware
-│   ├── models/        # Data models
-│   ├── repositories/  # Data access layer
-│   ├── services/      # Business logic
-│   └── websocket/     # WebSocket handling
-├── client/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── ReactionBar.tsx     # Reaction selection UI
-│   │   │   └── AnimatedEmotes.tsx  # Reaction display
-│   │   └── contexts/
-│   │       └── ReactionContext.tsx # Reaction state management
-│   └── ...
-├── pkg/
-│   ├── logger/        # Logging utilities
-│   └── utils/         # Common utilities
-├── migrations/        # SQLite migrations
-├── go.mod
-├── go.sum
-├── Makefile
-└── README.md
-```
-
-## Getting Started
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/go-radio.git
-   cd go-radio
-   ```
-
-2. Install dependencies:
-   ```bash
-   make deps
-   ```
-
-3. Set up environment variables:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-4. Run database migrations:
-   ```bash
-   make migrate-up
-   ```
-
-5. Run the application:
-   ```bash
-   make dev
-   ```
 
 ## License
 
