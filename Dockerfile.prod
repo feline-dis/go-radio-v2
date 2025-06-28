@@ -55,6 +55,7 @@ COPY --from=frontend-builder /app/frontend/dist /app/static
 
 # Copy necessary backend files
 COPY --from=backend-builder /app/migrations /app/migrations
+COPY --from=backend-builder /app/atlas.hcl /app/atlas.hcl
 
 # Create data directory for SQLite and set permissions
 RUN mkdir -p /app/data && chmod 755 /app/data
