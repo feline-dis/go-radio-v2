@@ -6,7 +6,7 @@ app = "go-radio-v2"
 primary_region = "iad"
 
 [build]
-  dockerfile = "Dockerfile.prod"
+  dockerfile = "Dockerfile"
 
 [env]
   PORT = "8080"
