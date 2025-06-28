@@ -104,7 +104,7 @@ function App() {
   // In development, we'll connect to the local server
   const wsUrl = import.meta.env.DEV
     ? "ws://localhost:8080/ws"
-    : "ws://" + window.location.host + "/ws";
+    : "wss://" + window.location.host + "/ws";
 
   return (
     <>
