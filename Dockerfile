@@ -19,6 +19,23 @@ COPY . .
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/go-radio cmd/server/main.go
 
+# Frontend build stage
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app/client
+
+# Copy package files
+COPY client/package.json client/yarn.lock ./
+
+# Install dependencies
+RUN yarn install --frozen-lockfile
+
+# Copy source code
+COPY client/ .
+
+# Build the application
+RUN yarn build
+
 # Final stage
 FROM alpine:latest
 
@@ -36,6 +53,9 @@ COPY --from=builder /usr/local/bin/atlas /usr/local/bin/atlas
 # Copy necessary files
 COPY --from=builder /app/migrations /app/migrations
 COPY --from=builder /app/atlas.hcl /app/atlas.hcl
+
+# Copy built frontend static files
+COPY --from=frontend-builder /app/client/dist /app/static
 
 # Create data directory for SQLite and set permissions
 RUN mkdir -p /app/data && chmod 755 /app/data

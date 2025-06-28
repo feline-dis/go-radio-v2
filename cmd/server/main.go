@@ -105,6 +105,7 @@ func main() {
 	radioController := controllers.NewRadioController(radioService)
 	youtubeController := controllers.NewYouTubeController(youtubeService)
 	playlistController := controllers.NewPlaylistController(playlistService, s3Service)
+	reactionController := controllers.NewReactionController(eventBus)
 
 	// Create router
 	router := mux.NewRouter()
@@ -138,6 +139,9 @@ func main() {
 	radioController.RegisterRoutes(apiRouter)
 	youtubeController.RegisterRoutes(apiRouter)
 	playlistController.RegisterRoutes(apiRouter)
+	
+	// Register reaction routes
+	apiRouter.HandleFunc("/api/v1/reactions", reactionController.SendReaction).Methods("POST")
 
 	// Admin auth middleware for /api/v1/admin endpoints
 	adminRouter := apiRouter.PathPrefix("/api/v1/admin").Subrouter()
@@ -153,14 +157,32 @@ func main() {
 	router.PathPrefix("/favicon.ico").Handler(fs)
 	router.PathPrefix("/manifest.json").Handler(fs)
 
+	// Check if static directory exists and log its contents
+	if _, err := os.Stat("/app/static"); os.IsNotExist(err) {
+		log.Printf("Warning: Static directory /app/static does not exist")
+	} else {
+		log.Printf("Static directory /app/static exists")
+		// List contents of static directory
+		if entries, err := os.ReadDir("/app/static"); err == nil {
+			log.Printf("Static directory contents:")
+			for _, entry := range entries {
+				log.Printf("  - %s", entry.Name())
+			}
+		}
+	}
+
 	// Handle client-side routing - serve index.html for all non-API routes
 	router.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Don't serve index.html for API routes
-		if r.URL.Path == "/" || (!strings.HasPrefix(r.URL.Path, "/api") && !strings.HasPrefix(r.URL.Path, "/ws")) {
-			http.ServeFile(w, r, "/app/static/index.html")
-		} else {
+		log.Printf("Serving request: %s", r.URL.Path)
+		
+		// Don't serve index.html for API routes or WebSocket
+		if strings.HasPrefix(r.URL.Path, "/api") || strings.HasPrefix(r.URL.Path, "/ws") {
 			http.NotFound(w, r)
+			return
 		}
+		
+		// For all other routes, serve index.html to support client-side routing
+		http.ServeFile(w, r, "/app/static/index.html")
 	})
 
 	// Create server
