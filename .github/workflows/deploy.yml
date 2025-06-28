@@ -5,37 +5,14 @@ on:
     branches: [main, master]
 
 jobs:
-  build-and-deploy:
-    name: Build and Deploy
+  deploy:
+    name: Deploy to Fly.io
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     environment: fly.io
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build backend image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: false
-          tags: go-radio-backend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build frontend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./client
-          file: ./client/Dockerfile
-          push: false
-          tags: go-radio-frontend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
