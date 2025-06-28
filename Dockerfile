@@ -53,6 +53,7 @@ COPY --from=builder /usr/local/bin/atlas /usr/local/bin/atlas
 # Copy necessary files
 COPY --from=builder /app/migrations /app/migrations
 COPY --from=builder /app/atlas.hcl /app/atlas.hcl
+COPY --from=builder /app/data/radio.db /app/data/radio.db
 
 # Copy built frontend static files
 COPY --from=frontend-builder /app/client/dist /app/static
