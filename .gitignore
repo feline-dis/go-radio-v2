@@ -30,10 +30,6 @@ go.work
 .env
 .env.*
 
-# SQLite database
-*.db
-*.db-journal
-
 # Build output
 bin/
 dist/

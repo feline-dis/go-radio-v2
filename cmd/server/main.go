@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -144,6 +145,23 @@ func main() {
 
 	// Login endpoint
 	apiRouter.HandleFunc("/api/login", middleware.LoginHandler(cfg)).Methods("POST")
+
+	// Serve static files for the frontend
+	fs := http.FileServer(http.Dir("/app/static"))
+	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", fs))
+	router.PathPrefix("/assets/").Handler(fs)
+	router.PathPrefix("/favicon.ico").Handler(fs)
+	router.PathPrefix("/manifest.json").Handler(fs)
+
+	// Handle client-side routing - serve index.html for all non-API routes
+	router.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Don't serve index.html for API routes
+		if r.URL.Path == "/" || (!strings.HasPrefix(r.URL.Path, "/api") && !strings.HasPrefix(r.URL.Path, "/ws")) {
+			http.ServeFile(w, r, "/app/static/index.html")
+		} else {
+			http.NotFound(w, r)
+		}
+	})
 
 	// Create server
 	server := &http.Server{

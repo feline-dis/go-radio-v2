@@ -1,0 +1,33 @@
+# Build stage
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json yarn.lock ./
+
+# Install dependencies
+RUN yarn install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN yarn build
+
+# Production stage - serve with simple HTTP server
+FROM node:20-alpine AS prod
+
+WORKDIR /app
+
+# Install serve package
+RUN npm install -g serve
+
+# Copy built application from builder stage
+COPY --from=builder /app/dist /app/dist
+
+# Expose port 3000
+EXPOSE 3000
+
+# Start serve
+CMD ["serve", "-s", "dist", "-l", "3000"] 
