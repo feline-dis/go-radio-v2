@@ -35,6 +35,7 @@ COPY --from=builder /usr/local/bin/atlas /usr/local/bin/atlas
 
 # Copy necessary files
 COPY --from=builder /app/migrations /app/migrations
+COPY --from=builder /app/atlas.hcl /app/atlas.hcl
 
 # Create data directory for SQLite and set permissions
 RUN mkdir -p /app/data && chmod 755 /app/data
