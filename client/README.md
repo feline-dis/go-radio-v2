@@ -39,7 +39,7 @@ A React-based web client for the Go Radio streaming service.
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+
 - Yarn or npm
 
 ### Setup
