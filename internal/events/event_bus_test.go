@@ -80,7 +80,15 @@ func TestPublishSongChange(t *testing.T) {
 		Duration:  200,
 	}
 
-	eventBus.PublishSongChange(currentSong, nextSong)
+	queueInfo := &models.QueueInfo{
+		CurrentSong: currentSong,
+		NextSong:    nextSong,
+		Queue:       []*models.Song{currentSong, nextSong},
+		Remaining:   120.5,
+		StartTime:   time.Now(),
+	}
+
+	eventBus.PublishSongChange(currentSong, nextSong, queueInfo)
 
 	// Wait for handler to be called
 	wg.Wait()

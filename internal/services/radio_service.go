@@ -46,6 +46,7 @@ type RadioService struct {
 	eventBus     EventBusInterface
 	state        *models.PlaybackState
 	mu           sync.RWMutex
+	randMu       sync.Mutex // For thread-safe random number generation
 }
 
 func NewRadioService(
@@ -203,12 +204,22 @@ func (s *RadioService) GetQueueInfo() *models.QueueInfo {
 		}
 	}
 
+	// Calculate remaining time directly to avoid deadlock
+	var remaining float64
+	if s.state.CurrentSong != nil && !s.state.Paused {
+		elapsed := time.Since(s.state.StartTime)
+		remainingDuration := time.Duration(s.state.CurrentSong.Duration)*time.Second - elapsed
+		if remainingDuration > 0 {
+			remaining = remainingDuration.Seconds()
+		}
+	}
+
 	return &models.QueueInfo{
 		CurrentSong: s.state.CurrentSong,
 		NextSong:    s.state.NextSong,
 		Queue:       s.state.Queue,
 		Playlist:    s.state.CurrentPlaylist,
-		Remaining:   s.GetRemainingTime().Seconds(),
+		Remaining:   remaining,
 		StartTime:   s.state.StartTime,
 	}
 }
@@ -267,7 +278,10 @@ func (s *RadioService) StartPlaybackLoop() error {
 	log.Printf("[DEBUG] StartPlaybackLoop: Created new state with song: %s and queue size: %d",
 		newState.CurrentSong.Title, len(newState.Queue))
 
+	// Set state with proper synchronization
+	s.mu.Lock()
 	s.state = newState
+	s.mu.Unlock()
 
 	// Send initial song change notification
 	s.notifySongChange(songs[0], songs[1%len(songs)])
@@ -296,6 +310,11 @@ func (s *RadioService) StartPlaybackLoop() error {
 	// Start the playback loop in a goroutine
 	log.Printf("[DEBUG] StartPlaybackLoop: Starting playback loop goroutine")
 	loopStarted := make(chan struct{})
+
+	// Make a copy of songs to avoid race conditions
+	songsCopy := make([]*models.Song, len(songs))
+	copy(songsCopy, songs)
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -304,7 +323,7 @@ func (s *RadioService) StartPlaybackLoop() error {
 		}()
 		log.Printf("[DEBUG] playbackLoop: Goroutine started")
 		close(loopStarted)
-		s.playbackLoop(songs)
+		s.playbackLoop(songsCopy)
 	}()
 
 	// Wait for goroutine to start
@@ -418,10 +437,13 @@ func (s *RadioService) playbackLoop(songs []*models.Song) {
 }
 
 func (s *RadioService) shuffleSongs(songs []*models.Song) []*models.Song {
+	s.randMu.Lock()
+	defer s.randMu.Unlock()
+
 	shuffled := make([]*models.Song, len(songs))
 	copy(shuffled, songs)
 
-	// Use a different seed each time for better randomization
+	// Use global rand package with mutex protection
 	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(shuffled), func(i, j int) {
 		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
@@ -433,10 +455,11 @@ func (s *RadioService) shuffleSongs(songs []*models.Song) []*models.Song {
 func (s *RadioService) notifySongChange(currentSong, nextSong *models.Song) {
 	fmt.Println("Notifying song change:", currentSong.Title, nextSong.Title)
 	if s.eventBus != nil {
-		s.eventBus.PublishSongChange(currentSong, nextSong, s.GetQueueInfo())
-
-		// Also publish queue update
+		// Get queue info once and reuse it
 		queueInfo := s.GetQueueInfo()
+		s.eventBus.PublishSongChange(currentSong, nextSong, queueInfo)
+
+		// Also publish queue update with the same info
 		s.eventBus.PublishQueueUpdate(queueInfo)
 	}
 }

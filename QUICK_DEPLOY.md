@@ -9,32 +9,75 @@ This guide will get your Go Radio v2 application running in minutes!
 
 ## Quick Start (5 minutes)
 
-### 1. Clone and Navigate
+### Option 1: Docker Compose (Recommended)
 ```bash
+# Clone the repository
 git clone <your-repo-url>
 cd go-radio-v2
-```
 
-### 2. Run the Deployment Script
-```bash
+# Run the deployment script
 ./deploy.sh
 ```
 
-The script will:
-- ✅ Check if Docker is installed
-- ✅ Create a `.env` template (if needed)
-- ✅ Build all Docker images
-- ✅ Start all services
-- ✅ Show you the URLs to access your app
+### Option 2: Manual Setup
+```bash
+# Backend
+go mod download
+make migrate-up
+cd cmd/server && go run main.go
 
-### 3. Access Your Application
+# Frontend
+cd client
+yarn install
+yarn dev
+```
 
-Once deployment is complete, you can access:
+## 🐳 Deployment Options
 
-- **🎵 Frontend**: http://localhost:3000
-- **🔧 Backend API**: http://localhost:8080
-- **📊 Metrics**: http://localhost:9090
-- **🏥 Health Check**: http://localhost:8080/api/v1/health
+### 1. Local Development with Docker Compose
+```bash
+# Start all services
+make dev-compose
+
+# View logs
+make compose-logs
+
+# Stop services
+make compose-down
+```
+
+### 2. Production Deployment
+```bash
+# Deploy with nginx reverse proxy
+make prod-compose
+
+# Or use the deployment script
+./deploy.sh
+```
+
+### 3. Cloud Deployment (Fly.io)
+```bash
+# Deploy to Fly.io
+make fly-deploy
+
+# Or use GitHub Actions
+make github-deploy-fly
+```
+
+### 4. GitHub Actions CI/CD
+The project includes automated GitHub Actions workflows:
+
+- **Pull Request Checks**: Automated testing and security scanning
+- **Automatic Deployment**: Deploy to Fly.io on push to main branch
+- **Release Management**: Create releases with versioned Docker images
+
+```bash
+# Deploy to Fly.io
+make github-deploy
+
+# Create a new release
+make github-release
+```
 
 ## Environment Setup
 

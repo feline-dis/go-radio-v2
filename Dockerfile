@@ -16,7 +16,7 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=1 GOOS=linux go build -o /app/bin/go-radio cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/go-radio cmd/server/main.go
 
 # Final stage
 FROM alpine:latest

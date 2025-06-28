@@ -137,4 +137,53 @@ dev-compose: compose-build compose-up
 # Production deployment with Docker Compose
 prod-compose: compose-build
 	@echo "Starting production environment..."
-	@docker compose --profile production up -d || docker-compose --profile production up -d 
+	@docker compose --profile production up -d || docker-compose --profile production up -d
+
+# GitHub Actions commands
+github-deploy:
+	@echo "Triggering Fly.io deployment via GitHub Actions..."
+	@gh workflow run deploy.yml
+
+github-release:
+	@echo "Creating a new release..."
+	@read -p "Enter version tag (e.g., v1.0.0): " version; \
+	git tag $$version; \
+	git push origin $$version
+
+# Development helpers
+dev-setup:
+	@echo "Setting up development environment..."
+	@cp .env.example .env 2>/dev/null || echo "No .env.example found"
+	@echo "Please edit .env with your configuration values"
+	@echo "Then run: make dev-compose"
+
+# Utility commands
+logs-backend:
+	@echo "Showing backend logs..."
+	@docker compose logs -f backend || docker-compose logs -f backend
+
+logs-frontend:
+	@echo "Showing frontend logs..."
+	@docker compose logs -f frontend || docker-compose logs -f frontend
+
+logs-nginx:
+	@echo "Showing nginx logs..."
+	@docker compose logs -f nginx || docker-compose logs -f nginx
+
+shell-backend:
+	@echo "Opening shell in backend container..."
+	@docker compose exec backend sh || docker-compose exec backend sh
+
+shell-frontend:
+	@echo "Opening shell in frontend container..."
+	@docker compose exec frontend sh || docker-compose exec frontend sh
+
+# Database commands
+db-backup:
+	@echo "Creating database backup..."
+	@docker compose exec backend sqlite3 /app/data/radio.db ".backup /app/data/radio.db.backup.$(shell date +%Y%m%d_%H%M%S)" || docker-compose exec backend sqlite3 /app/data/radio.db ".backup /app/data/radio.db.backup.$(shell date +%Y%m%d_%H%M%S)"
+
+db-restore:
+	@echo "Restoring database from backup..."
+	@read -p "Enter backup filename: " backup; \
+	docker compose exec backend sqlite3 /app/data/radio.db ".restore /app/data/$$backup" || docker-compose exec backend sqlite3 /app/data/radio.db ".restore /app/data/$$backup" 
