@@ -6,6 +6,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/feline-dis/go-radio-v2/internal/models"
@@ -16,6 +17,19 @@ type PlaylistService struct {
 	playlistRepo *repositories.PlaylistRepository
 	songRepo     *repositories.SongRepository
 	youtubeSvc   *YouTubeService
+}
+
+// songProcessingResult holds the result of processing a song
+type songProcessingResult struct {
+	song     *models.Song
+	position int
+	err      error
+}
+
+// batchJob represents a batch of songs to be processed
+type batchJob struct {
+	songIDs    []string
+	startIndex int
 }
 
 func NewPlaylistService(
@@ -30,7 +44,7 @@ func NewPlaylistService(
 	}
 }
 
-// CreatePlaylist creates a new playlist with the given songs
+// CreatePlaylist creates a new playlist with the given songs using concurrent processing
 func (s *PlaylistService) CreatePlaylist(name, description string, songIDs []string) (*models.Playlist, error) {
 	// Create the playlist
 	playlist := &models.Playlist{
@@ -42,56 +56,212 @@ func (s *PlaylistService) CreatePlaylist(name, description string, songIDs []str
 		return nil, err
 	}
 
-	// Process songs in batches to avoid hitting YouTube API limits
-	batchSize := 10
+	// Process songs concurrently if there are any
+	if len(songIDs) > 0 {
+		if err := s.processSongsConcurrently(playlist.ID, songIDs); err != nil {
+			log.Printf("Error processing songs concurrently: %v", err)
+			// Don't return error here as playlist was created successfully
+		}
+	}
+
+	return playlist, nil
+}
+
+// processSongsConcurrently processes songs using concurrent workers
+func (s *PlaylistService) processSongsConcurrently(playlistID string, songIDs []string) error {
+	const (
+		batchSize  = 10
+		maxWorkers = 3 // Limit concurrent API calls to avoid rate limits
+		rateLimit  = 100 * time.Millisecond
+	)
+
+	// Create batches
+	batches := make([]batchJob, 0)
 	for i := 0; i < len(songIDs); i += batchSize {
 		end := i + batchSize
 		if end > len(songIDs) {
 			end = len(songIDs)
 		}
-		batch := songIDs[i:end]
+		batches = append(batches, batchJob{
+			songIDs:    songIDs[i:end],
+			startIndex: i,
+		})
+	}
 
-		// Get song details from YouTube
-		ids := strings.Join(batch, ",")
-		detailsURL := fmt.Sprintf(
-			"https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=%s&key=%s",
-			ids,
-			s.youtubeSvc.apiKey,
-		)
+	// Create channels for job distribution and result collection
+	jobChan := make(chan batchJob, len(batches))
+	resultChan := make(chan []songProcessingResult, len(batches))
 
-		resp, err := s.youtubeSvc.httpClient.Get(detailsURL)
-		if err != nil {
-			log.Printf("Error getting video details: %v", err)
+	// Rate limiter channel
+	rateLimiter := make(chan struct{}, maxWorkers)
+	for i := 0; i < maxWorkers; i++ {
+		rateLimiter <- struct{}{}
+	}
+
+	// Start workers
+	var wg sync.WaitGroup
+	for i := 0; i < maxWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.processBatchWorker(jobChan, resultChan, rateLimiter, rateLimit)
+		}()
+	}
+
+	// Send jobs to workers
+	go func() {
+		defer close(jobChan)
+		for _, batch := range batches {
+			jobChan <- batch
+		}
+	}()
+
+	// Wait for workers to complete and close result channel
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	// Collect results and add songs to playlist
+	allResults := make([]songProcessingResult, 0)
+	for batchResults := range resultChan {
+		allResults = append(allResults, batchResults...)
+	}
+
+	// Sort results by position to maintain order
+	sortedResults := make([]songProcessingResult, len(allResults))
+	for _, result := range allResults {
+		if result.err == nil && result.position < len(sortedResults) {
+			sortedResults[result.position] = result
+		}
+	}
+
+	// Add songs to playlist in order
+	var addErrors []error
+	for _, result := range sortedResults {
+		if result.err != nil {
+			addErrors = append(addErrors, result.err)
 			continue
 		}
 
-		var videoResp struct {
-			Items []struct {
-				ID      string `json:"id"`
-				Snippet struct {
-					Title       string `json:"title"`
-					Description string `json:"description"`
-				} `json:"snippet"`
-				ContentDetails struct {
-					Duration string `json:"duration"`
-				} `json:"contentDetails"`
-			} `json:"items"`
+		if result.song != nil {
+			if err := s.playlistRepo.AddSong(playlistID, result.song.YouTubeID, result.position); err != nil {
+				log.Printf("Error adding song to playlist: %v", err)
+				addErrors = append(addErrors, err)
+			}
 		}
+	}
 
-		if err := json.NewDecoder(resp.Body).Decode(&videoResp); err != nil {
-			resp.Body.Close()
-			log.Printf("Error decoding video details: %v", err)
-			continue
+	if len(addErrors) > 0 {
+		log.Printf("Encountered %d errors while adding songs to playlist", len(addErrors))
+	}
+
+	return nil
+}
+
+// processBatchWorker processes batches of songs concurrently
+func (s *PlaylistService) processBatchWorker(
+	jobChan <-chan batchJob,
+	resultChan chan<- []songProcessingResult,
+	rateLimiter chan struct{},
+	rateLimit time.Duration,
+) {
+	for job := range jobChan {
+		// Wait for rate limiter
+		<-rateLimiter
+
+		// Process the batch
+		results := s.processBatch(job.songIDs, job.startIndex)
+
+		// Send results
+		resultChan <- results
+
+		// Return rate limiter token after delay
+		go func() {
+			time.Sleep(rateLimit)
+			rateLimiter <- struct{}{}
+		}()
+	}
+}
+
+// processBatch processes a batch of songs and returns results
+func (s *PlaylistService) processBatch(songIDs []string, startIndex int) []songProcessingResult {
+	// Get song details from YouTube
+	ids := strings.Join(songIDs, ",")
+	detailsURL := fmt.Sprintf(
+		"https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=%s&key=%s",
+		ids,
+		s.youtubeSvc.apiKey,
+	)
+
+	resp, err := s.youtubeSvc.httpClient.Get(detailsURL)
+	if err != nil {
+		log.Printf("Error getting video details: %v", err)
+		// Return errors for all songs in this batch
+		results := make([]songProcessingResult, len(songIDs))
+		for i := range songIDs {
+			results[i] = songProcessingResult{
+				position: startIndex + i,
+				err:      err,
+			}
 		}
-		resp.Body.Close()
+		return results
+	}
+	defer resp.Body.Close()
 
-		// Create songs and add them to playlist
-		for j, item := range videoResp.Items {
+	var videoResp struct {
+		Items []struct {
+			ID      string `json:"id"`
+			Snippet struct {
+				Title       string `json:"title"`
+				Description string `json:"description"`
+			} `json:"snippet"`
+			ContentDetails struct {
+				Duration string `json:"duration"`
+			} `json:"contentDetails"`
+		} `json:"items"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&videoResp); err != nil {
+		log.Printf("Error decoding video details: %v", err)
+		// Return errors for all songs in this batch
+		results := make([]songProcessingResult, len(songIDs))
+		for i := range songIDs {
+			results[i] = songProcessingResult{
+				position: startIndex + i,
+				err:      err,
+			}
+		}
+		return results
+	}
+
+	// Process each video item concurrently
+	results := make([]songProcessingResult, len(videoResp.Items))
+	var wg sync.WaitGroup
+
+	for i, item := range videoResp.Items {
+		wg.Add(1)
+		go func(i int, item struct {
+			ID      string `json:"id"`
+			Snippet struct {
+				Title       string `json:"title"`
+				Description string `json:"description"`
+			} `json:"snippet"`
+			ContentDetails struct {
+				Duration string `json:"duration"`
+			} `json:"contentDetails"`
+		}) {
+			defer wg.Done()
+
 			// Parse duration (format: PT1H2M10S)
 			duration := parseDuration(item.ContentDetails.Duration)
 			if duration == 0 {
 				log.Printf("Warning: Could not parse duration for video %s", item.ID)
-				continue
+				results[i] = songProcessingResult{
+					position: startIndex + i,
+					err:      fmt.Errorf("could not parse duration for video %s", item.ID),
+				}
+				return
 			}
 
 			// Create song entry
@@ -108,30 +278,38 @@ func (s *PlaylistService) CreatePlaylist(name, description string, songIDs []str
 			existingSong, err := s.songRepo.GetByYouTubeID(song.YouTubeID)
 			if err != nil {
 				log.Printf("Error checking existing song: %v", err)
-				continue
+				results[i] = songProcessingResult{
+					position: startIndex + i,
+					err:      err,
+				}
+				return
 			}
 
 			if existingSong == nil {
 				// Create new song
 				if err := s.songRepo.Create(song); err != nil {
 					log.Printf("Error creating song: %v", err)
-					continue
+					results[i] = songProcessingResult{
+						position: startIndex + i,
+						err:      err,
+					}
+					return
 				}
+			} else {
+				// Use existing song
+				song = existingSong
 			}
 
-			// Add song to playlist
-			position := i + j
-			if err := s.playlistRepo.AddSong(playlist.ID, song.YouTubeID, position); err != nil {
-				log.Printf("Error adding song to playlist: %v", err)
-				continue
+			results[i] = songProcessingResult{
+				song:     song,
+				position: startIndex + i,
+				err:      nil,
 			}
-		}
-
-		// Sleep briefly to avoid hitting rate limits
-		time.Sleep(100 * time.Millisecond)
+		}(i, item)
 	}
 
-	return playlist, nil
+	wg.Wait()
+	return results
 }
 
 // parseDuration parses a YouTube duration string (e.g., "PT1H2M10S") into a time.Duration
