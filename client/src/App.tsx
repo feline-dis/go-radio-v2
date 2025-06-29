@@ -9,11 +9,12 @@ import { LoginPage } from "./pages/LoginPage";
 import { AdminPage } from "./pages/AdminPage";
 import { LogoutButton } from "./components/LogoutButton";
 import {
-  ButterchurnVisualizer,
-  PresetSelector,
-} from "./components/ButterchurnVisualizer";
+  VissonanceVisualizer,
+  VissonancePresetSelector,
+} from "./components/VissonanceVisualizer";
 import { VisualizerToggle } from "./components/VisualizerToggle";
 import { VisualizerPerformance } from "./components/VisualizerPerformance";
+import { ReactionBar } from "./components/ReactionBar";
 import { Toaster } from "react-hot-toast";
 
 // Create a client
@@ -41,13 +42,13 @@ function AppContent() {
     <Router>
       <div className="min-h-screen bg-black flex flex-col relative">
         {/* Visualizer Background */}
-        <ButterchurnVisualizer
+        <VissonanceVisualizer
           isEnabled={isVisualizerEnabled}
           currentPreset={currentVisualizerPreset}
           onPresetChange={setCurrentVisualizerPreset}
         />
         <VisualizerToggle />
-        <PresetSelector
+        <VissonancePresetSelector
           currentPreset={currentVisualizerPreset}
           onPresetChange={setCurrentVisualizerPreset}
           isEnabled={isVisualizerEnabled}
@@ -130,6 +131,9 @@ function AppContent() {
             <Route path="/admin" element={<AdminPage />} />
           </Routes>
         </main>
+
+        {/* Floating Reaction Bar */}
+        <ReactionBar />
       </div>
     </Router>
   );

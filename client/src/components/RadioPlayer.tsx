@@ -1,7 +1,6 @@
 import { SpeakerWaveIcon, SpeakerXMarkIcon } from "@heroicons/react/24/solid";
 import { useRadio } from "../contexts/RadioContext";
 import { useEffect, useRef, useState } from "react";
-import { ReactionBar } from "./ReactionBar";
 import { AnimatedEmotes } from "./AnimatedEmotes";
 
 interface Song {
@@ -208,10 +207,7 @@ export const RadioPlayer = () => {
           </div>
         </div>
 
-        {/* Reaction Bar */}
-        <div className="mt-6">
-          <ReactionBar />
-        </div>
+
 
         {/* Queue Info */}
         {queueInfo?.Queue && queueInfo.Queue.length > 0 && (
