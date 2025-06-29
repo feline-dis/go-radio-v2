@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strconv"
 
 	"github.com/feline-dis/go-radio-v2/internal/services"
 	"github.com/gorilla/mux"
@@ -50,9 +49,9 @@ func (c *PlaylistController) GetPlaylists(w http.ResponseWriter, r *http.Request
 
 func (c *PlaylistController) GetPlaylist(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		http.Error(w, "Invalid playlist ID", http.StatusBadRequest)
+	id := vars["id"]
+	if id == "" {
+		http.Error(w, "Missing playlist ID", http.StatusBadRequest)
 		return
 	}
 
@@ -96,9 +95,9 @@ func (c *PlaylistController) CreatePlaylist(w http.ResponseWriter, r *http.Reque
 
 func (c *PlaylistController) GetPlaylistSongs(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		http.Error(w, "Invalid playlist ID", http.StatusBadRequest)
+	id := vars["id"]
+	if id == "" {
+		http.Error(w, "Missing playlist ID", http.StatusBadRequest)
 		return
 	}
 
@@ -114,9 +113,9 @@ func (c *PlaylistController) GetPlaylistSongs(w http.ResponseWriter, r *http.Req
 
 func (c *PlaylistController) AddSongToPlaylist(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		http.Error(w, "Invalid playlist ID", http.StatusBadRequest)
+	id := vars["id"]
+	if id == "" {
+		http.Error(w, "Missing playlist ID", http.StatusBadRequest)
 		return
 	}
 
@@ -140,9 +139,9 @@ func (c *PlaylistController) AddSongToPlaylist(w http.ResponseWriter, r *http.Re
 
 func (c *PlaylistController) RemoveSongFromPlaylist(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		http.Error(w, "Invalid playlist ID", http.StatusBadRequest)
+	id := vars["id"]
+	if id == "" {
+		http.Error(w, "Missing playlist ID", http.StatusBadRequest)
 		return
 	}
 
@@ -162,9 +161,9 @@ func (c *PlaylistController) RemoveSongFromPlaylist(w http.ResponseWriter, r *ht
 
 func (c *PlaylistController) UpdateSongPosition(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		http.Error(w, "Invalid playlist ID", http.StatusBadRequest)
+	id := vars["id"]
+	if id == "" {
+		http.Error(w, "Missing playlist ID", http.StatusBadRequest)
 		return
 	}
 

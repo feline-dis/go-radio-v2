@@ -9,13 +9,12 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
-	_ "modernc.org/sqlite"
+	_ "github.com/lib/pq"
 
 	"github.com/feline-dis/go-radio-v2/internal/config"
 	"github.com/feline-dis/go-radio-v2/internal/controllers"
@@ -45,26 +44,24 @@ func main() {
 
 	fmt.Println("Config:", cfg)
 
-	// Ensure data directory exists
-	if err := os.MkdirAll(filepath.Dir(cfg.Database.Path), 0755); err != nil {
-		log.Fatalf("Failed to create data directory: %v", err)
-	}
-
 	// Run database migrations
 	if err := runMigrations(); err != nil {
 		log.Fatalf("Failed to run database migrations: %v", err)
 	}
 
-	// Open SQLite database
-	db, err := sql.Open("sqlite", cfg.Database.Path)
+	// Open PostgreSQL database
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Database.Host, cfg.Database.Port, cfg.Database.User,
+		cfg.Database.Password, cfg.Database.DBName, cfg.Database.SSLMode)
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
 	defer db.Close()
 
 	// Configure connection pool
-	db.SetMaxOpenConns(1) // SQLite only supports one writer at a time
-	db.SetMaxIdleConns(1)
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(time.Hour)
 	db.SetConnMaxIdleTime(time.Minute * 5)
 

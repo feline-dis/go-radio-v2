@@ -20,7 +20,7 @@ type Song struct {
 
 // Playlist represents a playlist in the database
 type Playlist struct {
-	ID          int       `json:"id" db:"id"`
+	ID          string    `json:"id" db:"id"`
 	Name        string    `json:"name" db:"name"`
 	Description string    `json:"description" db:"description"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
@@ -29,7 +29,7 @@ type Playlist struct {
 
 // PlaylistSong represents the many-to-many relationship between playlists and songs
 type PlaylistSong struct {
-	PlaylistID int       `json:"playlist_id" db:"playlist_id"`
+	PlaylistID string    `json:"playlist_id" db:"playlist_id"`
 	YouTubeID  string    `json:"youtube_id" db:"youtube_id"`
 	Position   int       `json:"position" db:"position"`
 	CreatedAt  time.Time `json:"created_at" db:"created_at"`

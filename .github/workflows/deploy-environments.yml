@@ -57,7 +57,7 @@ jobs:
             
             # Create backup of current deployment
             echo "Creating backup..."
-            docker-compose exec -T backend sqlite3 /app/data/radio.db ".backup /app/data/radio.db.backup.$(date +%Y%m%d_%H%M%S)" || true
+            docker-compose exec -T postgres pg_dump -U postgres go_radio > backup_$(date +%Y%m%d_%H%M%S).sql || true
             
             # Pull latest images
             docker-compose pull

@@ -13,7 +13,7 @@ import (
 	"github.com/feline-dis/go-radio-v2/internal/config"
 	"github.com/feline-dis/go-radio-v2/internal/repositories"
 	"github.com/feline-dis/go-radio-v2/internal/services"
-	_ "modernc.org/sqlite"
+	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -29,7 +29,10 @@ func main() {
 	cfg := config.Load()
 
 	// Open database connection
-	db, err := sql.Open("sqlite", cfg.Database.Path)
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Database.Host, cfg.Database.Port, cfg.Database.User,
+		cfg.Database.Password, cfg.Database.DBName, cfg.Database.SSLMode)
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
