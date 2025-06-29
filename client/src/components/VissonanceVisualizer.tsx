@@ -300,14 +300,14 @@ export const VissonancePresetSelector: React.FC<{
   }
 
   return (
-    <div className="fixed top-4 right-4 z-50 bg-black bg-opacity-80 border border-gray-700 p-3 rounded-sm">
-      <div className="text-xs text-gray-400 font-mono mb-2">
+    <div className="fixed top-20 right-4 z-50 bg-black bg-opacity-80 border border-gray-700 p-2 sm:p-3 rounded-sm">
+      <div className="text-xs text-gray-400 font-mono mb-1 sm:mb-2 hidden sm:block">
         [VISSONANCE PRESET]
       </div>
       <select
         value={currentPreset}
         onChange={(e) => onPresetChange(e.target.value)}
-        className="bg-black border border-gray-600 text-white text-xs font-mono px-2 py-1 focus:outline-none focus:border-white"
+        className="bg-black border border-gray-600 text-white text-xs font-mono px-1 sm:px-2 py-1 focus:outline-none focus:border-white w-full sm:w-auto"
       >
         {presetNames.map((presetName) => (
           <option key={presetName} value={presetName}>

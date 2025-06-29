@@ -53,7 +53,6 @@ function AppContent() {
           onPresetChange={setCurrentVisualizerPreset}
           isEnabled={isVisualizerEnabled}
         />
-        <VisualizerPerformance />
 
         {/* Navigation */}
         <nav className="bg-black border-b border-gray-800 relative z-10">
@@ -121,7 +120,7 @@ function AppContent() {
             <Route
               path="/"
               element={
-                <div className="w-full flex items-center justify-center p-4">
+                <div className="w-full flex items-center justify-center p-2 sm:p-4">
                   <RadioInitButton />
                 </div>
               }
