@@ -98,11 +98,15 @@ func main() {
 	// Start WebSocket handler in a goroutine
 	go wsHandler.Run()
 
+	// Initialize JWT service
+	jwtService := services.NewJWTService(cfg)
+
 	// Initialize controllers
 	radioController := controllers.NewRadioController(radioService)
 	youtubeController := controllers.NewYouTubeController(youtubeService)
 	playlistController := controllers.NewPlaylistController(playlistService, s3Service)
 	reactionController := controllers.NewReactionController(eventBus)
+	authController := controllers.NewAuthController(jwtService, cfg)
 
 	// Create router
 	router := mux.NewRouter()
@@ -130,22 +134,19 @@ func main() {
 
 	// Create a subrouter for all other routes that will use the logging middleware
 	apiRouter := router.PathPrefix("").Subrouter()
-	// apiRouter.Use(middleware.LoggingMiddleware)
 
 	// Register all routes on the apiRouter instead of the main router
 	radioController.RegisterRoutes(apiRouter)
 	youtubeController.RegisterRoutes(apiRouter)
 	playlistController.RegisterRoutes(apiRouter)
+	authController.RegisterRoutes(apiRouter)
 	
 	// Register reaction routes
 	apiRouter.HandleFunc("/api/v1/reactions", reactionController.SendReaction).Methods("POST")
 
-	// Admin auth middleware for /api/v1/admin endpoints
+	// Admin routes with JWT authentication middleware
 	adminRouter := apiRouter.PathPrefix("/api/v1/admin").Subrouter()
-	adminRouter.Use(middleware.AuthMiddleware(cfg))
-
-	// Login endpoint
-	apiRouter.HandleFunc("/api/login", middleware.LoginHandler(cfg)).Methods("POST")
+	adminRouter.Use(middleware.AuthMiddleware(jwtService))
 
 	// Serve static files for the frontend
 	fs := http.FileServer(http.Dir("/app/static"))

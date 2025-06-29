@@ -72,10 +72,11 @@ export const ButterchurnVisualizer: React.FC<ButterchurnVisualizerProps> = ({
         audioContextRef.current,
         canvasRef.current,
         {
-          width: window.innerWidth,
-          height: window.innerHeight,
+          width: 600,
+          height: 600,
         }
       );
+      visualizerRef.current.setRendererSize(600, 600);
 
       // Connect to audio
       visualizerRef.current.connectAudio(gainNodeRef.current);
@@ -265,8 +266,6 @@ export const ButterchurnVisualizer: React.FC<ButterchurnVisualizerProps> = ({
         className="w-full h-full"
         style={{
           display: "block",
-          // Optimize canvas rendering
-          imageRendering: "pixelated" as const,
         }}
       />
     </div>

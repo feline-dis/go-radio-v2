@@ -20,8 +20,6 @@ interface Song {
 }
 
 interface QueueInfo {
-  CurrentSong: Song | null;
-  NextSong: Song | null;
   Queue: Song[];
   Playlist: {
     id: number;
@@ -30,12 +28,12 @@ interface QueueInfo {
   } | null;
   Remaining: number;
   StartTime: string;
+  CurrentSongIndex: number;
 }
 
 interface RadioContextType {
   // State
   elapsed: number;
-  isPaused: boolean;
   volume: number;
   isMuted: boolean;
   isAudioLoading: boolean;
@@ -50,7 +48,6 @@ interface RadioContextType {
 
   // Actions
   setElapsed: (elapsed: number) => void;
-  setIsPaused: (paused: boolean) => void;
   setVolume: (volume: number) => void;
   setIsMuted: (muted: boolean) => void;
   setIsUserInteracted: (interacted: boolean) => void;
@@ -64,7 +61,6 @@ interface RadioContextType {
 
   // Functions
   startPlayback: () => void;
-  pausePlayback: () => void;
   seekTo: (position: number) => void;
   initAudioContext: () => void;
   cleanup: () => void;
@@ -99,7 +95,6 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
 }) => {
   // State
   const [elapsed, setElapsed] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
   const [volume, setVolume] = useState(0.7);
   const [isMuted, setIsMuted] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
@@ -139,12 +134,11 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
 
       setQueueInfo(data);
       return {
-        CurrentSong: data.CurrentSong ?? null,
-        NextSong: data.NextSong ?? null,
         Queue: data.Queue ?? [],
         Playlist: data.Playlist ?? null,
         Remaining: data.Remaining ?? 0,
         StartTime: data.StartTime ?? "",
+        CurrentSongIndex: data.CurrentSongIndex ?? 0,
       };
     },
     refetchOnWindowFocus: false,
@@ -152,19 +146,20 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
   });
 
   // Load current song file
+  const currentSong = getCurrentSong(queueInfo);
   const { isLoading: isCurrentSongFileLoading } = useQuery({
-    queryKey: ["currentSongFile", queueInfo?.CurrentSong?.youtube_id],
+    queryKey: ["currentSongFile", currentSong?.youtube_id],
     queryFn: async () => {
-      if (!queueInfo?.CurrentSong?.youtube_id) return null;
+      if (!currentSong?.youtube_id) return null;
 
       const response = await fetch(
-        `/api/v1/playlists/${queueInfo.CurrentSong.youtube_id}/file`
+        `/api/v1/playlists/${currentSong.youtube_id}/file`
       );
       const arrayBuffer = await response.arrayBuffer();
       setCurrentSongFile(arrayBuffer);
       return arrayBuffer;
     },
-    enabled: !!queueInfo?.CurrentSong?.youtube_id,
+    enabled: !!currentSong?.youtube_id,
     staleTime: 0, // Always consider data stale to prevent caching issues
     gcTime: 0, // Don't cache to prevent detached buffer issues
     refetchOnMount: true,
@@ -200,12 +195,13 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
     const elapsed = (now.getTime() - startTime.getTime()) / 1000;
 
     // If song has duration, cap elapsed time
-    if (queueInfo.CurrentSong?.duration) {
-      return Math.min(elapsed, queueInfo.CurrentSong.duration);
+    const currentSong = getCurrentSong(queueInfo);
+    if (currentSong?.duration) {
+      return Math.min(elapsed, currentSong.duration);
     }
 
     return Math.max(0, elapsed);
-  }, [queueInfo?.StartTime, queueInfo?.CurrentSong?.duration]);
+  }, [queueInfo?.StartTime, queueInfo?.Queue, queueInfo?.CurrentSongIndex]);
 
   // Handle song changes from WebSocket
   const handleSongChange = useCallback(
@@ -225,7 +221,6 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
 
       // Reset playback state and flags
       setIsPlaying(false);
-      setIsPaused(false);
       setElapsed(0);
       isStartingPlaybackRef.current = false;
 
@@ -292,7 +287,6 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
         audioContextRef.current.currentTime - startPosition;
 
       setIsPlaying(true);
-      setIsPaused(false);
       setElapsed(startPosition);
 
       console.log(`Started playback at position: ${startPosition}s`);
@@ -304,17 +298,6 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
       isStartingPlaybackRef.current = false;
     }
   }, [currentSongFile, calculateElapsedTime]);
-
-  // Pause playback
-  const pausePlayback = useCallback(() => {
-    if (sourceNodeRef.current) {
-      sourceNodeRef.current.stop();
-      sourceNodeRef.current.disconnect();
-      sourceNodeRef.current = null;
-      setIsPlaying(false);
-      setIsPaused(true);
-    }
-  }, []);
 
   // Seek to position
   const seekTo = useCallback(
@@ -328,6 +311,39 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
       }
     },
     [isPlaying, startPlayback]
+  );
+
+  // Handle skip events from WebSocket
+  const handleSkipEvent = useCallback(
+    async (payload: any) => {
+      console.log("⏭️ Received skip event:", payload);
+      
+      // Skip will trigger song change events, so we don't need special handling
+      // The song change event will handle stopping current playback and starting new one
+    },
+    []
+  );
+
+  // Handle previous events from WebSocket
+  const handlePreviousEvent = useCallback(
+    async (payload: any) => {
+      console.log("⏮️ Received previous event:", payload);
+      
+      // Previous will trigger song change events, so we don't need special handling
+      // The song change event will handle stopping current playback and starting new one
+    },
+    []
+  );
+
+  // Handle playlist change events from WebSocket
+  const handlePlaylistChangeEvent = useCallback(
+    async (payload: any) => {
+      console.log("🎵 Received playlist change event:", payload);
+      
+      // Handle playlist change - this will trigger a song change event too
+      handleSongChange(payload);
+    },
+    [handleSongChange]
   );
 
   // WebSocket connection
@@ -349,6 +365,15 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
           switch (data.type) {
             case "song_change":
               handleSongChange(data.payload);
+              break;
+            case "skip":
+              handleSkipEvent(data.payload);
+              break;
+            case "previous":
+              handlePreviousEvent(data.payload);
+              break;
+            case "playlist_change":
+              handlePlaylistChangeEvent(data.payload);
               break;
             case "pong":
               console.log("🏓 Received pong from server");
@@ -412,7 +437,6 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
       currentSongFile &&
       isAudioContextReady &&
       !isPlaying &&
-      !isPaused &&
       !isStartingPlaybackRef.current
     ) {
       console.log("🎵 Auto-starting playback for new song file");
@@ -427,7 +451,6 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
     currentSongFile,
     isAudioContextReady,
     isPlaying,
-    isPaused,
     startPlayback,
   ]);
 
@@ -502,7 +525,6 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
     setIsWebSocketConnected(false);
     setIsAudioLoading(false);
     setIsPlaying(false);
-    setIsPaused(false);
     setElapsed(0);
   }, []);
 
@@ -524,7 +546,6 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
   const value: RadioContextType = {
     // State
     elapsed,
-    isPaused,
     volume,
     isMuted,
     isAudioLoading,
@@ -539,7 +560,6 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
 
     // Actions
     setElapsed,
-    setIsPaused,
     setVolume,
     setIsMuted,
     setIsUserInteracted,
@@ -553,7 +573,6 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
 
     // Functions
     startPlayback,
-    pausePlayback,
     seekTo,
     initAudioContext,
     cleanup,
@@ -573,8 +592,6 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
 };
 
 interface SongChangeEvent {
-  CurrentSong: Song | null;
-  NextSong: Song | null;
   Queue: Song[];
   Playlist: {
     id: number;
@@ -583,4 +600,21 @@ interface SongChangeEvent {
   } | null;
   Remaining: number;
   StartTime: string;
+  CurrentSongIndex: number;
 }
+
+// Helper functions to derive current and next songs from queue and index
+const getCurrentSong = (queueInfo: QueueInfo | null): Song | null => {
+  if (!queueInfo || !queueInfo.Queue || queueInfo.Queue.length === 0) {
+    return null;
+  }
+  
+  const currentIndex = queueInfo.CurrentSongIndex;
+  if (currentIndex < 0 || currentIndex >= queueInfo.Queue.length) {
+    return null;
+  }
+  
+  return queueInfo.Queue[currentIndex];
+};
+
+

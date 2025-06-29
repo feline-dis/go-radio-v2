@@ -18,6 +18,7 @@ type RadioServiceInterface interface {
 	GetElapsedTime() time.Duration
 	GetRemainingTime() time.Duration
 	GetQueueInfo() *models.QueueInfo
+	GetCurrentSong() *models.Song
 }
 
 // EventBusInterface defines the methods we need from the event bus
@@ -62,6 +63,35 @@ type SongChangeEvent struct {
 	Remaining   float64          `json:"remaining"`
 	StartTime   time.Time        `json:"start_time"`
 	Timestamp   int64            `json:"timestamp"`
+}
+
+type PlaybackControlEvent struct {
+	Action    string                `json:"action"`
+	Song      *models.Song          `json:"song"`
+	State     *models.PlaybackState `json:"state"`
+	Timestamp int64                 `json:"timestamp"`
+}
+
+type SkipEvent struct {
+	Song      *models.Song          `json:"song"`
+	NextSong  *models.Song          `json:"next_song"`
+	State     *models.PlaybackState `json:"state"`
+	Timestamp int64                 `json:"timestamp"`
+}
+
+type PreviousEvent struct {
+	Song      *models.Song          `json:"song"`
+	NextSong  *models.Song          `json:"next_song"`
+	State     *models.PlaybackState `json:"state"`
+	Timestamp int64                 `json:"timestamp"`
+}
+
+type PlaylistChangeEvent struct {
+	Song      *models.Song          `json:"song"`
+	NextSong  *models.Song          `json:"next_song"`
+	Playlist  *models.Playlist      `json:"playlist"`
+	State     *models.PlaybackState `json:"state"`
+	Timestamp int64                 `json:"timestamp"`
 }
 
 type QueueUpdate struct {
@@ -114,6 +144,9 @@ func NewHandler(radioSvc RadioServiceInterface, eventBus EventBusInterface) *Han
 		eventBus.Subscribe(events.EventSongChange, handler.handleSongChangeEvent)
 		eventBus.Subscribe(events.EventQueueUpdate, handler.handleQueueUpdateEvent)
 		eventBus.Subscribe(events.EventUserReaction, handler.handleUserReactionEvent)
+		eventBus.Subscribe(events.EventSkip, handler.handleSkipEvent)
+		eventBus.Subscribe(events.EventPrevious, handler.handlePreviousEvent)
+		eventBus.Subscribe(events.EventPlaylistChange, handler.handlePlaylistChangeEvent)
 	}
 
 	return handler
@@ -208,6 +241,94 @@ func (h *Handler) handleUserReactionEvent(event events.Event) {
 	data, err := json.Marshal(message)
 	if err != nil {
 		log.Printf("[ERROR] handleUserReactionEvent: Failed to marshal event: %v", err)
+		return
+	}
+
+	h.broadcast <- data
+}
+
+// handleSkipEvent handles skip events from the event bus
+func (h *Handler) handleSkipEvent(event events.Event) {
+	skipEvent, ok := event.Payload.(events.SkipEvent)
+	if !ok {
+		log.Printf("[ERROR] handleSkipEvent: Failed to cast payload to SkipEvent")
+		return
+	}
+
+	wsEvent := SkipEvent{
+		Song:      skipEvent.Song,
+		NextSong:  skipEvent.NextSong,
+		State:     skipEvent.State,
+		Timestamp: skipEvent.Timestamp,
+	}
+
+	message := Message{
+		Type:    "skip",
+		Payload: wsEvent,
+	}
+
+	data, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("[ERROR] handleSkipEvent: Failed to marshal event: %v", err)
+		return
+	}
+
+	h.broadcast <- data
+}
+
+// handlePreviousEvent handles previous events from the event bus
+func (h *Handler) handlePreviousEvent(event events.Event) {
+	previousEvent, ok := event.Payload.(events.PreviousEvent)
+	if !ok {
+		log.Printf("[ERROR] handlePreviousEvent: Failed to cast payload to PreviousEvent")
+		return
+	}
+
+	wsEvent := PreviousEvent{
+		Song:      previousEvent.Song,
+		NextSong:  previousEvent.NextSong,
+		State:     previousEvent.State,
+		Timestamp: previousEvent.Timestamp,
+	}
+
+	message := Message{
+		Type:    "previous",
+		Payload: wsEvent,
+	}
+
+	data, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("[ERROR] handlePreviousEvent: Failed to marshal event: %v", err)
+		return
+	}
+
+	h.broadcast <- data
+}
+
+// handlePlaylistChangeEvent handles playlist change events from the event bus
+func (h *Handler) handlePlaylistChangeEvent(event events.Event) {
+	playlistChangeEvent, ok := event.Payload.(events.PlaylistChangeEvent)
+	if !ok {
+		log.Printf("[ERROR] handlePlaylistChangeEvent: Failed to cast payload to PlaylistChangeEvent")
+		return
+	}
+
+	wsEvent := PlaylistChangeEvent{
+		Song:      playlistChangeEvent.Song,
+		NextSong:  playlistChangeEvent.NextSong,
+		Playlist:  playlistChangeEvent.Playlist,
+		State:     playlistChangeEvent.State,
+		Timestamp: playlistChangeEvent.Timestamp,
+	}
+
+	message := Message{
+		Type:    "playlist_change",
+		Payload: wsEvent,
+	}
+
+	data, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("[ERROR] handlePlaylistChangeEvent: Failed to marshal event: %v", err)
 		return
 	}
 
@@ -410,7 +531,7 @@ func (c *Client) writePump() {
 
 func (c *Client) sendPlaybackState() {
 	state := c.radioSvc.GetPlaybackState()
-	if state == nil || state.CurrentSong == nil {
+	if state == nil || c.radioSvc.GetCurrentSong() == nil {
 		// Send empty state to indicate no song is playing
 		update := PlaybackUpdate{
 			Song:      nil,
@@ -442,12 +563,14 @@ func (c *Client) sendPlaybackState() {
 	elapsed := c.radioSvc.GetElapsedTime().Seconds()
 	remaining := c.radioSvc.GetRemainingTime().Seconds()
 
+	currentSong := c.radioSvc.GetCurrentSong()
+
 	update := PlaybackUpdate{
-		Song:      state.CurrentSong,
+		Song:      currentSong,
 		Elapsed:   elapsed,
 		Remaining: remaining,
 		Paused:    state.Paused,
-		TotalTime: float64(state.CurrentSong.Duration),
+		TotalTime: float64(currentSong.Duration),
 		Timestamp: time.Now().UnixMilli(),
 	}
 

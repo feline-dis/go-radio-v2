@@ -11,6 +11,7 @@ import { toast } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { isAxiosError } from "axios";
 import api from "../lib/axios";
+import { ProtectedRoute } from "../components/ProtectedRoute";
 
 // Define the form schema
 const playlistSchema = z.object({
@@ -134,6 +135,7 @@ export function CreatePlaylist() {
   };
 
   return (
+    <ProtectedRoute>
     <div className="max-w-4xl mx-auto p-6">
       <h1 className="text-2xl font-mono font-bold text-white mb-8 tracking-wider">
         [CREATE_PLAYLIST]
@@ -381,5 +383,6 @@ export function CreatePlaylist() {
         </div>
       </form>
     </div>
+    </ProtectedRoute>
   );
 }

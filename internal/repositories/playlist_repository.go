@@ -68,9 +68,12 @@ func (r *PlaylistRepository) GetByID(id string) (*models.Playlist, error) {
 
 func (r *PlaylistRepository) GetAll() ([]*models.Playlist, error) {
 	query := `
-		SELECT id, name, description, created_at, updated_at
-		FROM playlists
-		ORDER BY name
+		SELECT p.id, p.name, p.description, p.created_at, p.updated_at, 
+		       COALESCE(COUNT(ps.playlist_id), 0) as song_count
+		FROM playlists p
+		LEFT JOIN playlist_songs ps ON p.id = ps.playlist_id
+		GROUP BY p.id, p.name, p.description, p.created_at, p.updated_at
+		ORDER BY p.name
 	`
 
 	rows, err := r.db.Query(query)
@@ -88,6 +91,7 @@ func (r *PlaylistRepository) GetAll() ([]*models.Playlist, error) {
 			&playlist.Description,
 			&playlist.CreatedAt,
 			&playlist.UpdatedAt,
+			&playlist.SongCount,
 		)
 		if err != nil {
 			return nil, err

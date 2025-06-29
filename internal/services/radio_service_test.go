@@ -139,6 +139,18 @@ func (m *MockEventBus) PublishPlaybackUpdate(song *models.Song, elapsed, remaini
 	// Mock implementation - do nothing for tests
 }
 
+func (m *MockEventBus) PublishSkip(song *models.Song, nextSong *models.Song, state *models.PlaybackState) {
+	// Mock implementation - do nothing for tests
+}
+
+func (m *MockEventBus) PublishPrevious(song *models.Song, nextSong *models.Song, state *models.PlaybackState) {
+	// Mock implementation - do nothing for tests
+}
+
+func (m *MockEventBus) PublishPlaylistChange(song *models.Song, nextSong *models.Song, playlist *models.Playlist, state *models.PlaybackState) {
+	// Mock implementation - do nothing for tests  
+}
+
 // Helper function to create test songs
 func createTestSong(id, title, artist string, duration int) *models.Song {
 	return &models.Song{
@@ -230,154 +242,7 @@ func TestGetPlaybackState(t *testing.T) {
 	}
 }
 
-func TestPlay(t *testing.T) {
-	tests := []struct {
-		name           string
-		setupMock      func(*MockSongRepository)
-		expectedError  bool
-		expectedPaused bool
-	}{
-		{
-			name: "Play when paused",
-			setupMock: func(repo *MockSongRepository) {
-				// No need to set up song since we're testing pause state
-			},
-			expectedError:  false,
-			expectedPaused: false,
-		},
-		{
-			name: "Play new song successfully",
-			setupMock: func(repo *MockSongRepository) {
-				repo.leastPlayedSong = createTestSong("test123", "Test Song", "Test Artist", 180)
-			},
-			expectedError:  false,
-			expectedPaused: false,
-		},
-		{
-			name: "Play with repository error",
-			setupMock: func(repo *MockSongRepository) {
-				repo.leastPlayedSong = nil
-			},
-			expectedError:  false, // GetLeastPlayedSong returns nil, nil when no songs
-			expectedPaused: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			songRepo := NewMockSongRepository()
-			playlistRepo := NewMockPlaylistRepository()
-			s3Service := &MockS3Service{}
-			eventBus := &MockEventBus{}
-
-			service := NewRadioService(songRepo, playlistRepo, s3Service, eventBus)
-
-			// Set up paused state for pause test
-			if tt.name == "Play when paused" {
-				service.state.Paused = true
-				service.state.PauseTime = time.Now()
-				service.state.StartTime = time.Now().Add(-time.Minute)
-			}
-
-			tt.setupMock(songRepo)
-
-			err := service.Play()
-
-			if tt.expectedError && err == nil {
-				t.Errorf("Expected error, got nil")
-			}
-
-			if !tt.expectedError && err != nil {
-				t.Errorf("Expected no error, got %v", err)
-			}
-
-			if service.state.Paused != tt.expectedPaused {
-				t.Errorf("Expected paused state %v, got %v", tt.expectedPaused, service.state.Paused)
-			}
-		})
-	}
-}
-
-func TestPause(t *testing.T) {
-	songRepo := NewMockSongRepository()
-	playlistRepo := NewMockPlaylistRepository()
-	s3Service := &MockS3Service{}
-	eventBus := &MockEventBus{}
-
-	service := NewRadioService(songRepo, playlistRepo, s3Service, eventBus)
-
-	// Set up playing state
-	service.state.CurrentSong = createTestSong("test123", "Test Song", "Test Artist", 180)
-	service.state.Paused = false
-	service.state.StartTime = time.Now()
-
-	service.Pause()
-
-	if !service.state.Paused {
-		t.Error("Expected song to be paused")
-	}
-
-	// Test that pause doesn't change state if already paused
-	originalPauseTime := service.state.PauseTime
-	time.Sleep(10 * time.Millisecond)
-	service.Pause()
-
-	if service.state.PauseTime != originalPauseTime {
-		t.Error("Expected pause time not to change when already paused")
-	}
-}
-
 func TestSkip(t *testing.T) {
-	tests := []struct {
-		name          string
-		setupMock     func(*MockSongRepository)
-		expectedError bool
-	}{
-		{
-			name: "Skip successfully",
-			setupMock: func(repo *MockSongRepository) {
-				repo.randomSong = createTestSong("test456", "New Song", "New Artist", 200)
-			},
-			expectedError: false,
-		},
-		{
-			name: "Skip with no songs available",
-			setupMock: func(repo *MockSongRepository) {
-				repo.randomSong = nil
-			},
-			expectedError: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			songRepo := NewMockSongRepository()
-			playlistRepo := NewMockPlaylistRepository()
-			s3Service := &MockS3Service{}
-			eventBus := &MockEventBus{}
-
-			service := NewRadioService(songRepo, playlistRepo, s3Service, eventBus)
-
-			tt.setupMock(songRepo)
-
-			err := service.Skip()
-
-			if tt.expectedError && err == nil {
-				t.Errorf("Expected error, got nil")
-			}
-
-			if !tt.expectedError && err != nil {
-				t.Errorf("Expected no error, got %v", err)
-			}
-
-			if tt.name == "Skip successfully" && service.state.CurrentSong == nil {
-				t.Error("Expected current song to be set after successful skip")
-			}
-		})
-	}
-}
-
-func TestRewind(t *testing.T) {
 	songRepo := NewMockSongRepository()
 	playlistRepo := NewMockPlaylistRepository()
 	s3Service := &MockS3Service{}
@@ -385,19 +250,135 @@ func TestRewind(t *testing.T) {
 
 	service := NewRadioService(songRepo, playlistRepo, s3Service, eventBus)
 
-	// Test rewind with no current song
-	service.Rewind(30)
-	// Should not panic or cause issues
+	// Test skip with no playlist
+	err := service.Skip()
+	if err == nil {
+		t.Error("Expected error when no playlist available")
+	}
 
-	// Test rewind with current song
-	service.state.CurrentSong = createTestSong("test123", "Test Song", "Test Artist", 180)
-	originalStartTime := service.state.StartTime
-	time.Sleep(10 * time.Millisecond)
+	// Test skip with playlist
+	playlist := createTestPlaylist("1", "Test Playlist")
+	songs := []*models.Song{
+		createTestSong("song1", "Song 1", "Artist 1", 180),
+		createTestSong("song2", "Song 2", "Artist 2", 200),
+		createTestSong("song3", "Song 3", "Artist 3", 160),
+	}
+	
+	service.state.CurrentPlaylist = playlist
+	service.state.CurrentSongIndex = 0 // Start at first song
+	service.state.CurrentSong = songs[0]
+	
+	playlistRepo.songs["1"] = songs
 
-	service.Rewind(30)
+	err = service.Skip()
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
 
-	if service.state.StartTime.Equal(originalStartTime) {
-		t.Error("Expected start time to change after rewind")
+	if service.state.CurrentSongIndex != 1 {
+		t.Errorf("Expected current song index to be 1, got %d", service.state.CurrentSongIndex)
+	}
+
+	if service.state.CurrentSong.YouTubeID != "song2" {
+		t.Errorf("Expected current song to be song2, got %s", service.state.CurrentSong.YouTubeID)
+	}
+}
+
+func TestSetActivePlaylist(t *testing.T) {
+	songRepo := NewMockSongRepository()
+	playlistRepo := NewMockPlaylistRepository()
+	s3Service := &MockS3Service{}
+	eventBus := &MockEventBus{}
+
+	service := NewRadioService(songRepo, playlistRepo, s3Service, eventBus)
+
+	// Test with non-existent playlist
+	err := service.SetActivePlaylist("non-existent")
+	if err == nil {
+		t.Error("Expected error when playlist not found")
+	}
+
+	// Set up playlists
+	playlist1 := createTestPlaylist("1", "Test Playlist 1")
+	playlist2 := createTestPlaylist("2", "Test Playlist 2")
+	songs1 := []*models.Song{
+		createTestSong("song1", "Song 1", "Artist 1", 180),
+		createTestSong("song2", "Song 2", "Artist 2", 200),
+	}
+	songs2 := []*models.Song{
+		createTestSong("song3", "Song 3", "Artist 3", 160),
+		createTestSong("song4", "Song 4", "Artist 4", 220),
+	}
+
+	playlistRepo.playlists["1"] = playlist1
+	playlistRepo.playlists["2"] = playlist2
+	playlistRepo.songs["1"] = songs1
+	playlistRepo.songs["2"] = songs2
+
+	// Test setting active playlist
+	err = service.SetActivePlaylist("2")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if service.state.CurrentPlaylist.ID != "2" {
+		t.Errorf("Expected current playlist ID to be '2', got %s", service.state.CurrentPlaylist.ID)
+	}
+
+	if service.state.CurrentSong.YouTubeID != "song3" {
+		t.Errorf("Expected current song to be 'song3', got %s", service.state.CurrentSong.YouTubeID)
+	}
+
+	if service.state.CurrentSongIndex != 0 {
+		t.Errorf("Expected current song index to be 0, got %d", service.state.CurrentSongIndex)
+	}
+
+	// Test with empty playlist
+	emptyPlaylist := createTestPlaylist("empty", "Empty Playlist")
+	playlistRepo.playlists["empty"] = emptyPlaylist
+	playlistRepo.songs["empty"] = []*models.Song{}
+
+	err = service.SetActivePlaylist("empty")
+	if err == nil {
+		t.Error("Expected error when playlist is empty")
+	}
+}
+
+func TestPrevious(t *testing.T) {
+	songRepo := NewMockSongRepository()
+	playlistRepo := NewMockPlaylistRepository()
+	s3Service := &MockS3Service{}
+	eventBus := &MockEventBus{}
+
+	service := NewRadioService(songRepo, playlistRepo, s3Service, eventBus)
+
+	// Test previous with no playlist
+	err := service.Previous()
+	if err == nil {
+		t.Error("Expected error when no playlist available")
+	}
+
+	// Test previous with playlist
+	playlist := createTestPlaylist("1", "Test Playlist")
+	songs := []*models.Song{
+		createTestSong("song1", "Song 1", "Artist 1", 180),
+		createTestSong("song2", "Song 2", "Artist 2", 200),
+		createTestSong("song3", "Song 3", "Artist 3", 160),
+	}
+	
+	service.state.CurrentPlaylist = playlist
+	service.state.CurrentSongIndex = 1 // Start at second song
+	service.state.CurrentSong = songs[1]
+	
+	playlistRepo.songs["1"] = songs
+
+	err = service.Previous()
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if service.state.CurrentSongIndex != 0 {
+		t.Errorf("Expected current song index to be 0, got %d", service.state.CurrentSongIndex)
 	}
 }
 
@@ -415,16 +396,8 @@ func TestGetElapsedTime(t *testing.T) {
 		t.Errorf("Expected 0 elapsed time with no song, got %v", elapsed)
 	}
 
-	// Test with paused song
-	service.state.CurrentSong = createTestSong("test123", "Test Song", "Test Artist", 180)
-	service.state.Paused = true
-	elapsed = service.GetElapsedTime()
-	if elapsed != 0 {
-		t.Errorf("Expected 0 elapsed time when paused, got %v", elapsed)
-	}
-
 	// Test with playing song
-	service.state.Paused = false
+	service.state.CurrentSong = createTestSong("test123", "Test Song", "Test Artist", 180)
 	service.state.StartTime = time.Now().Add(-time.Second)
 	elapsed = service.GetElapsedTime()
 	if elapsed <= 0 {
@@ -446,16 +419,8 @@ func TestGetRemainingTime(t *testing.T) {
 		t.Errorf("Expected 0 remaining time with no song, got %v", remaining)
 	}
 
-	// Test with paused song
-	service.state.CurrentSong = createTestSong("test123", "Test Song", "Test Artist", 180)
-	service.state.Paused = true
-	remaining = service.GetRemainingTime()
-	if remaining != 0 {
-		t.Errorf("Expected 0 remaining time when paused, got %v", remaining)
-	}
-
 	// Test with playing song
-	service.state.Paused = false
+	service.state.CurrentSong = createTestSong("test123", "Test Song", "Test Artist", 180)
 	service.state.StartTime = time.Now().Add(-time.Second)
 	remaining = service.GetRemainingTime()
 	if remaining <= 0 {
