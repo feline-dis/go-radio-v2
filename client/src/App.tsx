@@ -2,14 +2,19 @@ import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RadioProvider, useRadio } from "./contexts/RadioContext";
 import { ReactionProvider } from "./contexts/ReactionContext";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { RadioInitButton } from "./components/RadioInitButton";
 import { CreatePlaylist } from "./pages/CreatePlaylist";
+import { LoginPage } from "./pages/LoginPage";
+import { AdminPage } from "./pages/AdminPage";
+import { LogoutButton } from "./components/LogoutButton";
 import {
-  ButterchurnVisualizer,
-  PresetSelector,
-} from "./components/ButterchurnVisualizer";
+  VissonanceVisualizer,
+  VissonancePresetSelector,
+} from "./components/VissonanceVisualizer";
 import { VisualizerToggle } from "./components/VisualizerToggle";
 import { VisualizerPerformance } from "./components/VisualizerPerformance";
+import { ReactionBar } from "./components/ReactionBar";
 import { Toaster } from "react-hot-toast";
 
 // Create a client
@@ -31,18 +36,19 @@ function AppContent() {
     currentVisualizerPreset,
     setCurrentVisualizerPreset,
   } = useRadio();
+  const { isAuthenticated, user } = useAuth();
 
   return (
     <Router>
       <div className="min-h-screen bg-black flex flex-col relative">
         {/* Visualizer Background */}
-        <ButterchurnVisualizer
+        <VissonanceVisualizer
           isEnabled={isVisualizerEnabled}
           currentPreset={currentVisualizerPreset}
           onPresetChange={setCurrentVisualizerPreset}
         />
         <VisualizerToggle />
-        <PresetSelector
+        <VissonancePresetSelector
           currentPreset={currentVisualizerPreset}
           onPresetChange={setCurrentVisualizerPreset}
           isEnabled={isVisualizerEnabled}
@@ -69,13 +75,41 @@ function AppContent() {
                   >
                     [PLAYER]
                   </Link>
-                  <Link
-                    to="/playlists/create"
-                    className="border-transparent text-gray-500 hover:text-white hover:border-white inline-flex items-center px-1 pt-1 border-b-2 text-sm font-mono transition-colors"
-                  >
-                    [CREATE_PLAYLIST]
-                  </Link>
+                  {isAuthenticated && (
+                    <Link
+                      to="/playlists/create"
+                      className="border-transparent text-gray-500 hover:text-white hover:border-white inline-flex items-center px-1 pt-1 border-b-2 text-sm font-mono transition-colors"
+                    >
+                      [CREATE_PLAYLIST]
+                    </Link>
+                  )}
+
+                  {isAuthenticated && (
+                    <Link
+                      to="/admin"
+                      className="border-transparent text-gray-500 hover:text-white hover:border-white inline-flex items-center px-1 pt-1 border-b-2 text-sm font-mono transition-colors"
+                    >
+                      [ADMIN]
+                    </Link>
+                  )}
                 </div>
+              </div>
+              <div className="flex items-center space-x-4">
+                {isAuthenticated ? (
+                  <div className="flex items-center space-x-4">
+                    <span className="text-gray-400 font-mono text-sm">
+                      {user?.username}
+                    </span>
+                    <LogoutButton variant="icon" />
+                  </div>
+                ) : (
+                  <Link
+                    to="/login"
+                    className="text-gray-500 hover:text-white font-mono text-sm transition-colors"
+                  >
+                    [LOGIN]
+                  </Link>
+                )}
               </div>
             </div>
           </div>
@@ -93,8 +127,13 @@ function AppContent() {
               }
             />
             <Route path="/playlists/create" element={<CreatePlaylist />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/admin" element={<AdminPage />} />
           </Routes>
         </main>
+
+        {/* Floating Reaction Bar */}
+        <ReactionBar />
       </div>
     </Router>
   );
@@ -110,11 +149,13 @@ function App() {
     <>
       <Toaster position="top-right" />
       <QueryClientProvider client={queryClient}>
-        <ReactionProvider wsUrl={wsUrl}>
-          <RadioProvider wsUrl={wsUrl}>
-            <AppContent />
-          </RadioProvider>
-        </ReactionProvider>
+        <AuthProvider>
+          <ReactionProvider wsUrl={wsUrl}>
+            <RadioProvider wsUrl={wsUrl}>
+              <AppContent />
+            </RadioProvider>
+          </ReactionProvider>
+        </AuthProvider>
       </QueryClientProvider>
     </>
   );

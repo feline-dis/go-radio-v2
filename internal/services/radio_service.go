@@ -25,6 +25,7 @@ type SongRepositoryInterface interface {
 type PlaylistRepositoryInterface interface {
 	GetFirstPlaylist() (*models.Playlist, error)
 	GetSongs(playlistID string) ([]*models.Song, error)
+	GetByID(playlistID string) (*models.Playlist, error)
 }
 
 type S3ServiceInterface interface {
@@ -37,6 +38,9 @@ type EventBusInterface interface {
 	PublishSongChange(currentSong, nextSong *models.Song, queueInfo *models.QueueInfo)
 	PublishQueueUpdate(queueInfo *models.QueueInfo)
 	PublishPlaybackUpdate(song *models.Song, elapsed, remaining float64, paused bool)
+	PublishSkip(song *models.Song, nextSong *models.Song, state *models.PlaybackState)
+	PublishPrevious(song *models.Song, nextSong *models.Song, state *models.PlaybackState)
+	PublishPlaylistChange(song *models.Song, nextSong *models.Song, playlist *models.Playlist, state *models.PlaybackState)
 }
 
 type RadioService struct {
@@ -68,19 +72,6 @@ func NewRadioService(
 	}
 }
 
-func (s *RadioService) GetCurrentSong() *models.Song {
-	s.mu.RLock()
-	defer func() {
-		s.mu.RUnlock()
-	}()
-
-	if s.state.CurrentSong == nil {
-		return nil
-	}
-
-	return s.state.CurrentSong
-}
-
 func (s *RadioService) GetPlaybackState() *models.PlaybackState {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -88,82 +79,95 @@ func (s *RadioService) GetPlaybackState() *models.PlaybackState {
 	return s.state
 }
 
-func (s *RadioService) Play() error {
+func (s *RadioService) Next() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.state.Paused {
-		s.state.Paused = false
-		s.state.StartTime = time.Now().Add(-s.state.PauseTime.Sub(s.state.StartTime))
-		return nil
-	}
-
-	// Get a random song from the least played songs
-	song, err := s.songRepo.GetLeastPlayedSong()
-	if err != nil {
-		return err
-	}
-
-	if song == nil {
-		return nil
-	}
-
-	s.state.CurrentSong = song
-	s.state.StartTime = time.Now()
-	s.state.Paused = false
-
-	// Update play stats
-	return s.songRepo.UpdatePlayStats(song.YouTubeID)
-}
-
-func (s *RadioService) Pause() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if !s.state.Paused {
-		s.state.Paused = true
-		s.state.PauseTime = time.Now()
-	}
-}
-
-func (s *RadioService) Skip() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Get a random song
-	song, err := s.songRepo.GetRandomSong()
-	if err != nil {
-		return err
-	}
-
-	if song == nil {
-		return nil
-	}
-
-	s.state.CurrentSong = song
-	s.state.StartTime = time.Now()
-	s.state.Paused = false
-
-	// Update play stats
-	return s.songRepo.UpdatePlayStats(song.YouTubeID)
-}
-
-func (s *RadioService) Rewind(seconds int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.state.CurrentSong == nil {
+	if s.state == nil || len(s.state.Queue) == 0 {
 		return
 	}
 
-	s.state.StartTime = time.Now().Add(-time.Duration(seconds) * time.Second)
+	// Move to next song
+	s.state.CurrentSongIndex = s.state.CurrentSongIndex + 1
+
+	// Handle wrap-around at end of playlist
+	if s.state.CurrentSongIndex >= len(s.state.Queue) {
+		s.state.CurrentSongIndex = 0
+	}
+
+	s.state.StartTime = time.Now()
+
+	// Get current and next songs safely
+	var currentSong, nextSong *models.Song
+	if s.state.CurrentSongIndex < len(s.state.Queue) {
+		currentSong = s.state.Queue[s.state.CurrentSongIndex]
+	}
+	nextIndex := (s.state.CurrentSongIndex + 1) % len(s.state.Queue)
+	if nextIndex < len(s.state.Queue) {
+		nextSong = s.state.Queue[nextIndex]
+	}
+
+	// Create queue info without additional locking
+	queueInfo := &models.QueueInfo{
+		Queue:            s.state.Queue,
+		Playlist:         s.state.CurrentPlaylist,
+		Remaining:        0, // Will be calculated by client
+		StartTime:        s.state.StartTime,
+		CurrentSongIndex: s.state.CurrentSongIndex,
+	}
+
+	s.eventBus.PublishSongChange(currentSong, nextSong, queueInfo)
+}
+
+func (s *RadioService) Previous() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.state == nil || len(s.state.Queue) == 0 {
+		return
+	}
+
+	// Move to previous song
+	s.state.CurrentSongIndex = s.state.CurrentSongIndex - 1
+
+	// Handle wrap-around at beginning of playlist
+	if s.state.CurrentSongIndex < 0 {
+		s.state.CurrentSongIndex = len(s.state.Queue) - 1
+	}
+
+	s.state.StartTime = time.Now()
+
+	// Get current and next songs safely
+	var currentSong, nextSong *models.Song
+	if s.state.CurrentSongIndex < len(s.state.Queue) {
+		currentSong = s.state.Queue[s.state.CurrentSongIndex]
+	}
+	nextIndex := (s.state.CurrentSongIndex + 1) % len(s.state.Queue)
+	if nextIndex < len(s.state.Queue) {
+		nextSong = s.state.Queue[nextIndex]
+	}
+
+	// Create queue info without additional locking
+	queueInfo := &models.QueueInfo{
+		Queue:            s.state.Queue,
+		Playlist:         s.state.CurrentPlaylist,
+		Remaining:        0, // Will be calculated by client
+		StartTime:        s.state.StartTime,
+		CurrentSongIndex: s.state.CurrentSongIndex,
+	}
+
+	s.eventBus.PublishSongChange(currentSong, nextSong, queueInfo)
 }
 
 func (s *RadioService) GetElapsedTime() time.Duration {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if s.state.CurrentSong == nil || s.state.Paused {
+	if s.state == nil || len(s.state.Queue) == 0 {
+		return 0
+	}
+
+	if s.state.CurrentSongIndex < 0 || s.state.CurrentSongIndex >= len(s.state.Queue) {
 		return 0
 	}
 
@@ -172,16 +176,23 @@ func (s *RadioService) GetElapsedTime() time.Duration {
 
 func (s *RadioService) GetRemainingTime() time.Duration {
 	s.mu.RLock()
-	defer func() {
-		s.mu.RUnlock()
-	}()
+	defer s.mu.RUnlock()
 
-	if s.state.CurrentSong == nil || s.state.Paused {
+	if s.state == nil || len(s.state.Queue) == 0 {
+		return 0
+	}
+
+	if s.state.CurrentSongIndex < 0 || s.state.CurrentSongIndex >= len(s.state.Queue) {
+		return 0
+	}
+
+	currentSong := s.state.Queue[s.state.CurrentSongIndex]
+	if currentSong == nil {
 		return 0
 	}
 
 	elapsed := time.Since(s.state.StartTime)
-	remaining := time.Duration(s.state.CurrentSong.Duration)*time.Second - elapsed
+	remaining := time.Duration(currentSong.Duration)*time.Second - elapsed
 
 	if remaining < 0 {
 		return 0
@@ -191,37 +202,56 @@ func (s *RadioService) GetRemainingTime() time.Duration {
 
 func (s *RadioService) GetQueueInfo() *models.QueueInfo {
 	s.mu.RLock()
-	defer func() {
-		s.mu.RUnlock()
-	}()
+	defer s.mu.RUnlock()
 
 	if s.state == nil {
 		return &models.QueueInfo{
-			CurrentSong: nil,
-			NextSong:    nil,
-			Queue:       []*models.Song{},
-			Playlist:    nil,
+			Queue:            []*models.Song{},
+			Playlist:         nil,
+			Remaining:        0,
+			StartTime:        time.Time{},
+			CurrentSongIndex: 0,
 		}
+	}
+
+	// Get current song safely without additional locking
+	var currentSong *models.Song
+	if len(s.state.Queue) > 0 && s.state.CurrentSongIndex >= 0 && s.state.CurrentSongIndex < len(s.state.Queue) {
+		currentSong = s.state.Queue[s.state.CurrentSongIndex]
 	}
 
 	// Calculate remaining time directly to avoid deadlock
 	var remaining float64
-	if s.state.CurrentSong != nil && !s.state.Paused {
+	if currentSong != nil && !s.state.Paused {
 		elapsed := time.Since(s.state.StartTime)
-		remainingDuration := time.Duration(s.state.CurrentSong.Duration)*time.Second - elapsed
+		remainingDuration := time.Duration(currentSong.Duration)*time.Second - elapsed
 		if remainingDuration > 0 {
 			remaining = remainingDuration.Seconds()
 		}
 	}
 
 	return &models.QueueInfo{
-		CurrentSong: s.state.CurrentSong,
-		NextSong:    s.state.NextSong,
-		Queue:       s.state.Queue,
-		Playlist:    s.state.CurrentPlaylist,
-		Remaining:   remaining,
-		StartTime:   s.state.StartTime,
+		Queue:            s.state.Queue,
+		Playlist:         s.state.CurrentPlaylist,
+		Remaining:        remaining,
+		StartTime:        s.state.StartTime,
+		CurrentSongIndex: s.state.CurrentSongIndex,
 	}
+}
+
+func (s *RadioService) GetCurrentSong() *models.Song {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.state == nil || len(s.state.Queue) == 0 {
+		return nil
+	}
+
+	if s.state.CurrentSongIndex < 0 || s.state.CurrentSongIndex >= len(s.state.Queue) {
+		return nil
+	}
+
+	return s.state.Queue[s.state.CurrentSongIndex]
 }
 
 func (s *RadioService) StartPlaybackLoop() error {
@@ -253,30 +283,21 @@ func (s *RadioService) StartPlaybackLoop() error {
 			i, song.YouTubeID, song.Title, song.Duration)
 	}
 
+	shuffledSongs := s.shuffleSongs(songs)
+	numShuffledSongs := len(shuffledSongs)
+
 	// Create new state before acquiring lock
 	newState := &models.PlaybackState{
 		CurrentPlaylist:  playlist,
 		CurrentSongIndex: 0,
-		CurrentSong:      songs[0],
 		StartTime:        time.Now(),
 		Paused:           false,
-		NextSong:         songs[1%len(songs)],
-		Queue:            make([]*models.Song, 0, 5),
-		ShuffledSongs:    s.shuffleSongs(songs),
-		IsShuffled:       false, // Start with original order
+		Queue:            make([]*models.Song, 0, numShuffledSongs),
 	}
 
-	// Build initial queue
-	queueSize := 5
-	if len(songs) < queueSize {
-		queueSize = len(songs)
+	for i := 0; i < numShuffledSongs; i++ {
+		newState.Queue = append(newState.Queue, shuffledSongs[i])
 	}
-	for i := 0; i < queueSize; i++ {
-		newState.Queue = append(newState.Queue, songs[i%len(songs)])
-	}
-
-	log.Printf("[DEBUG] StartPlaybackLoop: Created new state with song: %s and queue size: %d",
-		newState.CurrentSong.Title, len(newState.Queue))
 
 	// Set state with proper synchronization
 	s.mu.Lock()
@@ -291,21 +312,23 @@ func (s *RadioService) StartPlaybackLoop() error {
 	state := s.state
 	s.mu.RUnlock()
 
+	currentSong := s.GetCurrentSong()
+
 	if state == nil {
 		log.Printf("[ERROR] StartPlaybackLoop: State is nil after initialization")
 		return fmt.Errorf("state is nil after initialization")
 	}
-	if state.CurrentSong == nil {
+	if currentSong == nil {
 		log.Printf("[ERROR] StartPlaybackLoop: CurrentSong is nil after initialization")
-		return fmt.Errorf("CurrentSong is nil after initialization")
+		return fmt.Errorf("currentSong is nil after initialization")
 	}
 	if len(state.Queue) == 0 {
 		log.Printf("[ERROR] StartPlaybackLoop: Queue is empty after initialization")
-		return fmt.Errorf("Queue is empty after initialization")
+		return fmt.Errorf("queue is empty after initialization")
 	}
 
 	log.Printf("[DEBUG] StartPlaybackLoop: State verification passed - CurrentSong: %s, Queue size: %d",
-		state.CurrentSong.Title, len(state.Queue))
+		currentSong.Title, len(state.Queue))
 
 	// Start the playback loop in a goroutine
 	log.Printf("[DEBUG] StartPlaybackLoop: Starting playback loop goroutine")
@@ -341,7 +364,7 @@ func (s *RadioService) StartPlaybackLoop() error {
 	state = s.state
 	s.mu.RUnlock()
 	log.Printf("[DEBUG] StartPlaybackLoop: Final state check - CurrentSong: %v, Queue size: %d",
-		state.CurrentSong, len(state.Queue))
+		s.GetCurrentSong(), len(state.Queue))
 
 	return nil
 }
@@ -354,17 +377,6 @@ func (s *RadioService) playbackLoop(songs []*models.Song) {
 	defer ticker.Stop()
 
 	// Log initial state
-	s.mu.RLock()
-	if s.state == nil {
-		log.Printf("[ERROR] playbackLoop: State is nil at start")
-		return
-	}
-	if s.state.CurrentSong == nil {
-		log.Printf("[ERROR] playbackLoop: CurrentSong is nil at start")
-		return
-	}
-	s.mu.RUnlock()
-
 	for range ticker.C {
 		// Get remaining time without holding the lock
 		remaining := s.GetRemainingTime()
@@ -374,63 +386,78 @@ func (s *RadioService) playbackLoop(songs []*models.Song) {
 			// Only lock during the state update
 			s.mu.Lock()
 
+			if s.state == nil || len(s.state.Queue) == 0 {
+				s.mu.Unlock()
+				continue
+			}
+
 			// Check if we've reached the end of the playlist
-			if s.state.CurrentSongIndex >= len(songs)-1 {
+			if s.state.CurrentSongIndex >= len(s.state.Queue)-1 {
 				// Playlist completed, shuffle and restart
-				s.state.ShuffledSongs = s.shuffleSongs(songs)
-				s.state.IsShuffled = true
+				shuffledSongs := s.shuffleSongs(s.state.Queue)
 				s.state.CurrentSongIndex = 0
-				s.state.CurrentSong = s.state.ShuffledSongs[0]
-				s.state.NextSong = s.state.ShuffledSongs[1%len(s.state.ShuffledSongs)]
+				s.state.StartTime = time.Now()
 
 				// Update queue with shuffled songs
-				s.state.Queue = make([]*models.Song, 0, 5)
-				queueSize := 5
-				if len(s.state.ShuffledSongs) < queueSize {
-					queueSize = len(s.state.ShuffledSongs)
+				s.state.Queue = make([]*models.Song, 0, len(shuffledSongs))
+				for i := 0; i < len(shuffledSongs); i++ {
+					s.state.Queue = append(s.state.Queue, shuffledSongs[i%len(shuffledSongs)])
 				}
-				for i := 0; i < queueSize; i++ {
-					s.state.Queue = append(s.state.Queue, s.state.ShuffledSongs[i%len(s.state.ShuffledSongs)])
+
+				// Get songs for notification without additional locking
+				var currentSong, nextSong *models.Song
+				if len(s.state.Queue) > 0 {
+					currentSong = s.state.Queue[0]
+					if len(s.state.Queue) > 1 {
+						nextSong = s.state.Queue[1]
+					}
+				}
+
+				// Create queue info without additional locking
+				queueInfo := &models.QueueInfo{
+					Queue:            s.state.Queue,
+					Playlist:         s.state.CurrentPlaylist,
+					Remaining:        0,
+					StartTime:        s.state.StartTime,
+					CurrentSongIndex: s.state.CurrentSongIndex,
+				}
+
+				s.mu.Unlock()
+
+				// Notify outside of lock
+				if s.eventBus != nil && currentSong != nil {
+					s.eventBus.PublishSongChange(currentSong, nextSong, queueInfo)
 				}
 			} else {
-				// Move to next song in current playlist
-				s.state.CurrentSongIndex++
-				if s.state.IsShuffled {
-					s.state.CurrentSong = s.state.ShuffledSongs[s.state.CurrentSongIndex]
-					s.state.NextSong = s.state.ShuffledSongs[(s.state.CurrentSongIndex+1)%len(s.state.ShuffledSongs)]
-				} else {
-					s.state.CurrentSong = songs[s.state.CurrentSongIndex]
-					s.state.NextSong = songs[(s.state.CurrentSongIndex+1)%len(songs)]
+				// Move to next song - increment index
+				s.state.CurrentSongIndex = s.state.CurrentSongIndex + 1
+				s.state.StartTime = time.Now()
+
+				// Get songs for notification without additional locking
+				var currentSong, nextSong *models.Song
+				if s.state.CurrentSongIndex < len(s.state.Queue) {
+					currentSong = s.state.Queue[s.state.CurrentSongIndex]
 				}
-			}
-
-			s.state.StartTime = time.Now()
-			s.state.Paused = false
-
-			// Update queue
-			if !s.state.IsShuffled {
-				s.state.Queue = make([]*models.Song, 0, 5)
-				queueSize := 5
-				if len(songs) < queueSize {
-					queueSize = len(songs)
+				nextIndex := (s.state.CurrentSongIndex + 1) % len(s.state.Queue)
+				if nextIndex < len(s.state.Queue) {
+					nextSong = s.state.Queue[nextIndex]
 				}
-				for i := 0; i < queueSize; i++ {
-					s.state.Queue = append(s.state.Queue, songs[(s.state.CurrentSongIndex+1+i)%len(songs)])
+
+				// Create queue info without additional locking
+				queueInfo := &models.QueueInfo{
+					Queue:            s.state.Queue,
+					Playlist:         s.state.CurrentPlaylist,
+					Remaining:        0,
+					StartTime:        s.state.StartTime,
+					CurrentSongIndex: s.state.CurrentSongIndex,
 				}
-			}
 
-			currentSongID := s.state.CurrentSong.YouTubeID
-			nextSong := s.state.NextSong
-			currentSong := s.state.CurrentSong
+				s.mu.Unlock()
 
-			s.mu.Unlock()
-
-			// Notify clients about song change
-			s.notifySongChange(currentSong, nextSong)
-
-			// Update play stats without holding the lock
-			if err := s.songRepo.UpdatePlayStats(currentSongID); err != nil {
-				log.Printf("[ERROR] playbackLoop: Failed to update play stats for song %s: %v", currentSongID, err)
+				// Notify outside of lock
+				if s.eventBus != nil && currentSong != nil {
+					s.eventBus.PublishSongChange(currentSong, nextSong, queueInfo)
+				}
 			}
 		}
 	}
@@ -453,7 +480,9 @@ func (s *RadioService) shuffleSongs(songs []*models.Song) []*models.Song {
 }
 
 func (s *RadioService) notifySongChange(currentSong, nextSong *models.Song) {
-	fmt.Println("Notifying song change:", currentSong.Title, nextSong.Title)
+	if currentSong != nil {
+		fmt.Println("Notifying song change:", currentSong.Title)
+	}
 	if s.eventBus != nil {
 		// Get queue info once and reuse it
 		queueInfo := s.GetQueueInfo()
@@ -462,4 +491,75 @@ func (s *RadioService) notifySongChange(currentSong, nextSong *models.Song) {
 		// Also publish queue update with the same info
 		s.eventBus.PublishQueueUpdate(queueInfo)
 	}
+}
+
+// SetActivePlaylist changes the current playlist and restarts playback
+func (s *RadioService) SetActivePlaylist(playlistID string) error {
+	// Get the new playlist without holding the lock
+	playlist, err := s.playlistRepo.GetByID(playlistID)
+	if err != nil {
+		return fmt.Errorf("failed to get playlist: %w", err)
+	}
+	if playlist == nil {
+		return fmt.Errorf("playlist not found")
+	}
+
+	// Get songs from the new playlist
+	songs, err := s.playlistRepo.GetSongs(playlist.ID)
+	if err != nil {
+		return fmt.Errorf("failed to get playlist songs: %w", err)
+	}
+	if len(songs) == 0 {
+		return fmt.Errorf("playlist %s is empty", playlist.ID)
+	}
+
+	log.Printf("[DEBUG] SetActivePlaylist: Switching to playlist %s with %d songs", playlist.Name, len(songs))
+
+	shuffledSongs := s.shuffleSongs(songs)
+
+	// Create new state with the new playlist
+	newState := &models.PlaybackState{
+		CurrentPlaylist:  playlist,
+		CurrentSongIndex: 0,
+		StartTime:        time.Now(),
+		Paused:           false,
+		Queue:            make([]*models.Song, 0, len(shuffledSongs)),
+	}
+
+	// Build new queue
+	for i := 0; i < len(shuffledSongs); i++ {
+		newState.Queue = append(newState.Queue, shuffledSongs[i%len(shuffledSongs)])
+	}
+
+	// Set state with proper synchronization
+	s.mu.Lock()
+	s.state = newState
+
+	// Get songs for notification without additional locking
+	var currentSong, nextSong *models.Song
+	if len(s.state.Queue) > 0 {
+		currentSong = s.state.Queue[0]
+		if len(s.state.Queue) > 1 {
+			nextSong = s.state.Queue[1]
+		}
+	}
+
+	// Create queue info without additional locking
+	queueInfo := &models.QueueInfo{
+		Queue:            s.state.Queue,
+		Playlist:         s.state.CurrentPlaylist,
+		Remaining:        0,
+		StartTime:        s.state.StartTime,
+		CurrentSongIndex: s.state.CurrentSongIndex,
+	}
+
+	s.mu.Unlock()
+
+	// Broadcast playlist change event outside of lock
+	if s.eventBus != nil && currentSong != nil {
+		s.eventBus.PublishSongChange(currentSong, nextSong, queueInfo)
+	}
+
+	log.Printf("[DEBUG] SetActivePlaylist: Successfully switched to playlist %s", playlist.Name)
+	return nil
 }

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/feline-dis/go-radio-v2/internal/models"
@@ -31,10 +30,9 @@ func (c *RadioController) RegisterRoutes(r *mux.Router) {
 
 	// Admin endpoints
 	admin := r.PathPrefix("/api/v1/admin").Subrouter()
-	admin.HandleFunc("/play", c.Play).Methods("POST")
-	admin.HandleFunc("/pause", c.Pause).Methods("POST")
 	admin.HandleFunc("/skip", c.Skip).Methods("POST")
-	admin.HandleFunc("/rewind", c.Rewind).Methods("POST")
+	admin.HandleFunc("/previous", c.Previous).Methods("POST")
+	admin.HandleFunc("/playlist/set-active", c.SetActivePlaylist).Methods("POST")
 }
 
 func (c *RadioController) GetNowPlaying(w http.ResponseWriter, r *http.Request) {
@@ -44,54 +42,40 @@ func (c *RadioController) GetNowPlaying(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	state := c.radioSvc.GetPlaybackState()
 	response := struct {
 		Song      *models.Song `json:"song"`
 		Elapsed   float64      `json:"elapsed"`
 		Remaining float64      `json:"remaining"`
-		Paused    bool         `json:"paused"`
 	}{
 		Song:      song,
 		Elapsed:   c.radioSvc.GetElapsedTime().Seconds(),
 		Remaining: c.radioSvc.GetRemainingTime().Seconds(),
-		Paused:    state.Paused,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
 
-func (c *RadioController) Play(w http.ResponseWriter, r *http.Request) {
-	if err := c.radioSvc.Play(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
-}
-
-func (c *RadioController) Pause(w http.ResponseWriter, r *http.Request) {
-	c.radioSvc.Pause()
-	w.WriteHeader(http.StatusOK)
-}
-
 func (c *RadioController) Skip(w http.ResponseWriter, r *http.Request) {
-	if err := c.radioSvc.Skip(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	c.radioSvc.Next()
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "success",
+		"action": "skip",
+	})
 }
 
-func (c *RadioController) Rewind(w http.ResponseWriter, r *http.Request) {
-	seconds := 10 // Default rewind duration
-	if s := r.URL.Query().Get("seconds"); s != "" {
-		if sec, err := strconv.Atoi(s); err == nil && sec > 0 {
-			seconds = sec
-		}
-	}
+func (c *RadioController) Previous(w http.ResponseWriter, r *http.Request) {
+	c.radioSvc.Previous()
 
-	c.radioSvc.Rewind(seconds)
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "success",
+		"action": "previous",
+	})
 }
 
 func (c *RadioController) GetQueue(w http.ResponseWriter, r *http.Request) {
@@ -104,10 +88,11 @@ func (c *RadioController) GetQueue(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[DEBUG] GetQueue: Queue info is nil, creating empty queue")
 		// Return empty queue info instead of error
 		queueInfo = &models.QueueInfo{
-			CurrentSong: nil,
-			NextSong:    nil,
-			Queue:       []*models.Song{},
-			Playlist:    nil,
+			Queue:            []*models.Song{},
+			Playlist:         nil,
+			Remaining:        0,
+			StartTime:        time.Time{},
+			CurrentSongIndex: 0,
 		}
 	}
 
@@ -124,7 +109,6 @@ func (c *RadioController) GetQueue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *RadioController) GetDebugPlaybackState(w http.ResponseWriter, r *http.Request) {
-	state := c.radioSvc.GetPlaybackState()
 	elapsed := c.radioSvc.GetElapsedTime().Seconds()
 	remaining := c.radioSvc.GetRemainingTime().Seconds()
 
@@ -132,13 +116,11 @@ func (c *RadioController) GetDebugPlaybackState(w http.ResponseWriter, r *http.R
 		CurrentSong *models.Song `json:"current_song"`
 		Elapsed     float64      `json:"elapsed"`
 		Remaining   float64      `json:"remaining"`
-		Paused      bool         `json:"paused"`
 		Timestamp   int64        `json:"timestamp"`
 	}{
-		CurrentSong: state.CurrentSong,
+		CurrentSong: c.radioSvc.GetCurrentSong(),
 		Elapsed:     elapsed,
 		Remaining:   remaining,
-		Paused:      state.Paused,
 		Timestamp:   time.Now().UnixMilli(),
 	}
 
@@ -158,4 +140,34 @@ func (c *RadioController) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(response)
+}
+
+func (c *RadioController) SetActivePlaylist(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		PlaylistID string `json:"playlist_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if request.PlaylistID == "" {
+		http.Error(w, "playlist_id is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := c.radioSvc.SetActivePlaylist(request.PlaylistID); err != nil {
+		log.Printf("[ERROR] SetActivePlaylist: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":      "success",
+		"action":      "playlist_changed",
+		"playlist_id": request.PlaylistID,
+	})
 }

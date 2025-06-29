@@ -14,6 +14,9 @@ const (
 	EventQueueUpdate    = "queue_update"
 	EventPlaybackUpdate = "playback_update"
 	EventUserReaction   = "user_reaction"
+	EventSkip           = "skip"
+	EventPrevious       = "previous"
+	EventPlaylistChange = "playlist_change"
 )
 
 // Event represents a generic event
@@ -59,6 +62,31 @@ type UserReactionEvent struct {
 	UserID    string `json:"user_id"`
 	Emote     string `json:"emote"`
 	Timestamp int64  `json:"timestamp"`
+}
+
+// SkipEvent represents a skip event
+type SkipEvent struct {
+	Song      *models.Song          `json:"song"`
+	NextSong  *models.Song          `json:"next_song"`
+	State     *models.PlaybackState `json:"state"`
+	Timestamp int64                 `json:"timestamp"`
+}
+
+// PreviousEvent represents a previous event
+type PreviousEvent struct {
+	Song      *models.Song          `json:"song"`
+	NextSong  *models.Song          `json:"next_song"`
+	State     *models.PlaybackState `json:"state"`
+	Timestamp int64                 `json:"timestamp"`
+}
+
+// PlaylistChangeEvent represents a playlist change event
+type PlaylistChangeEvent struct {
+	Song      *models.Song          `json:"song"`
+	NextSong  *models.Song          `json:"next_song"`
+	Playlist  *models.Playlist      `json:"playlist"`
+	State     *models.PlaybackState `json:"state"`
+	Timestamp int64                 `json:"timestamp"`
 }
 
 // EventHandler is a function that handles events
@@ -134,12 +162,10 @@ func (eb *EventBus) PublishQueueUpdate(queueInfo *models.QueueInfo) {
 	event := Event{
 		Type: EventQueueUpdate,
 		Payload: QueueUpdateEvent{
-			CurrentSong: queueInfo.CurrentSong,
-			NextSong:    queueInfo.NextSong,
-			Queue:       queueInfo.Queue,
-			Playlist:    queueInfo.Playlist,
-			Remaining:   queueInfo.Remaining,
-			StartTime:   queueInfo.StartTime,
+			Queue:     queueInfo.Queue,
+			Playlist:  queueInfo.Playlist,
+			Remaining: queueInfo.Remaining,
+			StartTime: queueInfo.StartTime,
 		},
 		Timestamp: time.Now(),
 	}
@@ -170,6 +196,52 @@ func (eb *EventBus) PublishUserReaction(userID, emote string) {
 		Payload: UserReactionEvent{
 			UserID:    userID,
 			Emote:     emote,
+			Timestamp: time.Now().UnixMilli(),
+		},
+		Timestamp: time.Now(),
+	}
+	eb.Publish(event)
+}
+
+// PublishSkip publishes a skip event
+func (eb *EventBus) PublishSkip(song *models.Song, nextSong *models.Song, state *models.PlaybackState) {
+	event := Event{
+		Type: EventSkip,
+		Payload: SkipEvent{
+			Song:      song,
+			NextSong:  nextSong,
+			State:     state,
+			Timestamp: time.Now().UnixMilli(),
+		},
+		Timestamp: time.Now(),
+	}
+	eb.Publish(event)
+}
+
+// PublishPrevious publishes a previous event
+func (eb *EventBus) PublishPrevious(song *models.Song, nextSong *models.Song, state *models.PlaybackState) {
+	event := Event{
+		Type: EventPrevious,
+		Payload: PreviousEvent{
+			Song:      song,
+			NextSong:  nextSong,
+			State:     state,
+			Timestamp: time.Now().UnixMilli(),
+		},
+		Timestamp: time.Now(),
+	}
+	eb.Publish(event)
+}
+
+// PublishPlaylistChange publishes a playlist change event
+func (eb *EventBus) PublishPlaylistChange(song *models.Song, nextSong *models.Song, playlist *models.Playlist, state *models.PlaybackState) {
+	event := Event{
+		Type: EventPlaylistChange,
+		Payload: PlaylistChangeEvent{
+			Song:      song,
+			NextSong:  nextSong,
+			Playlist:  playlist,
+			State:     state,
 			Timestamp: time.Now().UnixMilli(),
 		},
 		Timestamp: time.Now(),

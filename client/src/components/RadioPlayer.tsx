@@ -1,7 +1,6 @@
 import { SpeakerWaveIcon, SpeakerXMarkIcon } from "@heroicons/react/24/solid";
 import { useRadio } from "../contexts/RadioContext";
 import { useEffect, useRef, useState } from "react";
-import { ReactionBar } from "./ReactionBar";
 import { AnimatedEmotes } from "./AnimatedEmotes";
 
 interface Song {
@@ -13,15 +12,41 @@ interface Song {
   s3_key: string;
 }
 
+interface QueueInfo {
+  Queue: Song[];
+  Playlist: {
+    id: number;
+    name: string;
+    description: string;
+  } | null;
+  Remaining: number;
+  StartTime: string;
+  CurrentSongIndex: number;
+}
+
+// Helper functions to derive current and next songs from queue and index
+const getCurrentSong = (queueInfo: QueueInfo | null): Song | null => {
+  if (!queueInfo || !queueInfo.Queue || queueInfo.Queue.length === 0) {
+    return null;
+  }
+  
+  const currentIndex = queueInfo.CurrentSongIndex;
+  if (currentIndex < 0 || currentIndex >= queueInfo.Queue.length) {
+    return null;
+  }
+  
+  return queueInfo.Queue[currentIndex];
+};
+
+
+
 // Separate ProgressBar component that handles its own updates
 const ProgressBar = ({
   currentSong,
   elapsed,
-  isPaused,
 }: {
   currentSong: Song | null;
   elapsed: number;
-  isPaused: boolean;
 }) => {
   const [localElapsed, setLocalElapsed] = useState(elapsed);
   const lastUpdateRef = useRef(Date.now());
@@ -34,7 +59,7 @@ const ProgressBar = ({
   useEffect(() => {
     const updateElapsed = () => {
       const now = Date.now();
-      if (now - lastUpdateRef.current > 100 && !isPaused) {
+      if (now - lastUpdateRef.current > 100) {
         lastUpdateRef.current = now;
         setLocalElapsed((prev) => prev + 0.1);
       }
@@ -48,7 +73,7 @@ const ProgressBar = ({
         cancelAnimationFrame(rafRef.current);
       }
     };
-  }, [isPaused]);
+  }, []);
 
   const progress = (localElapsed / (currentSong?.duration || 0)) * 100;
   const formatTime = (seconds: number) => {
@@ -77,7 +102,6 @@ export const RadioPlayer = () => {
   const {
     queueInfo,
     elapsed,
-    isPaused,
     volume,
     isMuted,
     isAudioLoading,
@@ -87,7 +111,7 @@ export const RadioPlayer = () => {
     setIsMuted,
   } = useRadio();
 
-  const currentSong = queueInfo?.CurrentSong || null;
+  const currentSong = getCurrentSong(queueInfo);
 
   const handleVolumeChange = (newVolume: number) => {
     setVolume(newVolume);
@@ -127,10 +151,7 @@ export const RadioPlayer = () => {
                   [LOADING AUDIO...]
                 </p>
               )}
-              {isPaused && (
-                <p className="text-xs text-gray-600 font-mono">[PAUSED]</p>
-              )}
-              {isPlaying && !isPaused && (
+              {isPlaying && (
                 <p className="text-xs text-green-500 font-mono">[PLAYING]</p>
               )}
             </>
@@ -147,7 +168,6 @@ export const RadioPlayer = () => {
         <ProgressBar
           currentSong={currentSong}
           elapsed={elapsed}
-          isPaused={isPaused}
         />
 
         {/* Volume Controls */}
@@ -187,27 +207,39 @@ export const RadioPlayer = () => {
           </div>
         </div>
 
-        {/* Reaction Bar */}
-        <div className="mt-6">
-          <ReactionBar />
-        </div>
+
 
         {/* Queue Info */}
         {queueInfo?.Queue && queueInfo.Queue.length > 0 && (
           <div className="mt-6">
             <h3 className="text-sm text-gray-500 font-mono mb-2">[QUEUE]</h3>
             <div className="space-y-1">
-              {queueInfo.Queue.slice(0, 3).map((song, index) => (
+              {/* Show current song */}
+              {currentSong && (
+                <div className="text-xs font-mono text-white">
+                  ▶ {currentSong.title}
+                </div>
+              )}
+              {/* Show next 2 upcoming songs */}
+              {queueInfo.Queue.slice(queueInfo.CurrentSongIndex + 1, queueInfo.CurrentSongIndex + 3).map((song, index) => (
                 <div
                   key={song.youtube_id}
-                  className={`text-xs font-mono ${
-                    index === 0 ? "text-white" : "text-gray-500"
-                  }`}
+                  className="text-xs font-mono text-gray-500"
                 >
-                  {index === 0 ? "▶ " : `${index + 1}. `}
-                  {song.title}
+                  {index + 2}. {song.title}
                 </div>
               ))}
+              {/* If we're near the end of the queue, show songs from the beginning */}
+              {queueInfo.CurrentSongIndex + 3 > queueInfo.Queue.length && 
+                queueInfo.Queue.slice(0, Math.min(2, queueInfo.Queue.length - 1)).map((song, index) => (
+                  <div
+                    key={`loop-${song.youtube_id}`}
+                    className="text-xs font-mono text-gray-500"
+                  >
+                    {queueInfo.CurrentSongIndex + 2 + index}. {song.title}
+                  </div>
+                ))
+              }
             </div>
           </div>
         )}
