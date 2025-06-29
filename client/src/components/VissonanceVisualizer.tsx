@@ -2,7 +2,6 @@ import React, {
   useEffect,
   useRef,
   useCallback,
-  useMemo,
   useState,
 } from "react";
 import { useRadio } from "../contexts/RadioContext";
@@ -60,7 +59,7 @@ export const VissonanceVisualizer: React.FC<VissonanceVisualizerProps> = ({
   const isInitializedRef = useRef<boolean>(false);
   const resizeTimeoutRef = useRef<number | null>(null);
   const [webGLError, setWebGLError] = useState<string | null>(null);
-  const { audioContextRef, gainNodeRef, isPlaying } = useRadio();
+  const { audioContextRef, gainNodeRef } = useRadio();
 
   // Initialize visualizer
   const initVisualizer = useCallback(async () => {
