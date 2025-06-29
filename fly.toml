@@ -10,7 +10,12 @@ primary_region = "iad"
 
 [env]
   PORT = "8080"
-  SQLITE_DB_PATH = "/app/data/radio.db"
+  POSTGRES_HOST = "localhost"
+  POSTGRES_PORT = "5432"
+  POSTGRES_USER = "postgres"
+  POSTGRES_PASSWORD = "postgres"
+  POSTGRES_DB = "go_radio"
+  POSTGRES_SSLMODE = "disable"
   LOG_LEVEL = "info"
   ENABLE_METRICS = "true"
   METRICS_PORT = "9090"

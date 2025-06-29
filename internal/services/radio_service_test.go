@@ -50,15 +50,15 @@ func (m *MockSongRepository) GetByYouTubeID(youtubeID string) (*models.Song, err
 }
 
 type MockPlaylistRepository struct {
-	playlists     map[int]*models.Playlist
-	songs         map[int][]*models.Song
+	playlists     map[string]*models.Playlist
+	songs         map[string][]*models.Song
 	firstPlaylist *models.Playlist
 }
 
 func NewMockPlaylistRepository() *MockPlaylistRepository {
 	return &MockPlaylistRepository{
-		playlists: make(map[int]*models.Playlist),
-		songs:     make(map[int][]*models.Song),
+		playlists: make(map[string]*models.Playlist),
+		songs:     make(map[string][]*models.Song),
 	}
 }
 
@@ -66,7 +66,7 @@ func (m *MockPlaylistRepository) GetFirstPlaylist() (*models.Playlist, error) {
 	return m.firstPlaylist, nil
 }
 
-func (m *MockPlaylistRepository) GetSongs(playlistID int) ([]*models.Song, error) {
+func (m *MockPlaylistRepository) GetSongs(playlistID string) ([]*models.Song, error) {
 	songs, exists := m.songs[playlistID]
 	if !exists {
 		return []*models.Song{}, nil
@@ -79,7 +79,7 @@ func (m *MockPlaylistRepository) Create(playlist *models.Playlist) error {
 	return nil
 }
 
-func (m *MockPlaylistRepository) GetByID(id int) (*models.Playlist, error) {
+func (m *MockPlaylistRepository) GetByID(id string) (*models.Playlist, error) {
 	playlist, exists := m.playlists[id]
 	if !exists {
 		return nil, nil
@@ -95,15 +95,15 @@ func (m *MockPlaylistRepository) GetAll() ([]*models.Playlist, error) {
 	return playlists, nil
 }
 
-func (m *MockPlaylistRepository) AddSong(playlistID int, youtubeID string, position int) error {
+func (m *MockPlaylistRepository) AddSong(playlistID string, youtubeID string, position int) error {
 	return nil
 }
 
-func (m *MockPlaylistRepository) RemoveSong(playlistID int, youtubeID string) error {
+func (m *MockPlaylistRepository) RemoveSong(playlistID string, youtubeID string) error {
 	return nil
 }
 
-func (m *MockPlaylistRepository) UpdateSongPosition(playlistID int, youtubeID string, newPosition int) error {
+func (m *MockPlaylistRepository) UpdateSongPosition(playlistID string, youtubeID string, newPosition int) error {
 	return nil
 }
 
@@ -153,7 +153,7 @@ func createTestSong(id, title, artist string, duration int) *models.Song {
 }
 
 // Helper function to create test playlist
-func createTestPlaylist(id int, name string) *models.Playlist {
+func createTestPlaylist(id string, name string) *models.Playlist {
 	return &models.Playlist{
 		ID:          id,
 		Name:        name,
@@ -494,7 +494,7 @@ func TestGetQueueInfo(t *testing.T) {
 
 	// Test with populated state
 	testSong := createTestSong("test123", "Test Song", "Test Artist", 180)
-	testPlaylist := createTestPlaylist(1, "Test Playlist")
+	testPlaylist := createTestPlaylist("1", "Test Playlist")
 	testQueue := []*models.Song{testSong}
 
 	service.state.CurrentSong = testSong
@@ -529,14 +529,14 @@ func TestStartPlaybackLoop(t *testing.T) {
 		{
 			name: "Start playback loop successfully",
 			setupMocks: func(playlistRepo *MockPlaylistRepository, songRepo *MockSongRepository) {
-				playlist := createTestPlaylist(1, "Test Playlist")
+				playlist := createTestPlaylist("1", "Test Playlist")
 				songs := []*models.Song{
 					createTestSong("song1", "Song 1", "Artist 1", 180),
 					createTestSong("song2", "Song 2", "Artist 2", 200),
 					createTestSong("song3", "Song 3", "Artist 3", 160),
 				}
 				playlistRepo.firstPlaylist = playlist
-				playlistRepo.songs[1] = songs
+				playlistRepo.songs["1"] = songs
 			},
 			expectedError: false,
 		},
@@ -550,9 +550,9 @@ func TestStartPlaybackLoop(t *testing.T) {
 		{
 			name: "Empty playlist",
 			setupMocks: func(playlistRepo *MockPlaylistRepository, songRepo *MockSongRepository) {
-				playlist := createTestPlaylist(1, "Test Playlist")
+				playlist := createTestPlaylist("1", "Test Playlist")
 				playlistRepo.firstPlaylist = playlist
-				playlistRepo.songs[1] = []*models.Song{}
+				playlistRepo.songs["1"] = []*models.Song{}
 			},
 			expectedError: true,
 		},
@@ -605,7 +605,7 @@ func TestPlaybackLoopStateTransitions(t *testing.T) {
 	service := NewRadioService(songRepo, playlistRepo, s3Service, eventBus)
 
 	// Set up a playlist with short songs for testing
-	playlist := createTestPlaylist(1, "Test Playlist")
+	playlist := createTestPlaylist("1", "Test Playlist")
 	songs := []*models.Song{
 		createTestSong("song1", "Song 1", "Artist 1", 1), // 1 second duration
 		createTestSong("song2", "Song 2", "Artist 2", 1),
@@ -613,7 +613,7 @@ func TestPlaybackLoopStateTransitions(t *testing.T) {
 	}
 
 	playlistRepo.firstPlaylist = playlist
-	playlistRepo.songs[1] = songs
+	playlistRepo.songs["1"] = songs
 
 	// Start playback loop
 	err := service.StartPlaybackLoop()
@@ -686,14 +686,14 @@ func TestUpdatePlayStatsError(t *testing.T) {
 	songRepo.updateStatsErr = errors.New("database error")
 
 	// Set up playlist and songs
-	playlist := createTestPlaylist(1, "Test Playlist")
+	playlist := createTestPlaylist("1", "Test Playlist")
 	songs := []*models.Song{
 		createTestSong("song1", "Song 1", "Artist 1", 1),
 		createTestSong("song2", "Song 2", "Artist 2", 1),
 	}
 
 	playlistRepo.firstPlaylist = playlist
-	playlistRepo.songs[1] = songs
+	playlistRepo.songs["1"] = songs
 
 	// Start playback loop - should not fail due to stats update error
 	err := service.StartPlaybackLoop()

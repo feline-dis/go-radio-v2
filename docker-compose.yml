@@ -1,5 +1,25 @@
-
 services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: go-radio-postgres
+    environment:
+      POSTGRES_DB: go_radio
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - go-radio-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d go_radio"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # Backend Go service
   backend:
     image: ghcr.io/${GITHUB_REPOSITORY:-feline-dis/go-radio-v2}/backend:${IMAGE_TAG:-latest}
@@ -14,7 +34,12 @@ services:
       - .env
     environment:
       - PORT=8080
-      - SQLITE_DB_PATH=/app/data/radio.db
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=go_radio
+      - POSTGRES_SSLMODE=disable
       - LOG_LEVEL=info
       - ENABLE_METRICS=true
       - METRICS_PORT=9090
@@ -23,8 +48,9 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
-    volumes:
-      - go_radio_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - go-radio-network
     restart: unless-stopped
@@ -77,7 +103,7 @@ services:
       start_period: 30s
 
 volumes:
-  go_radio_data:
+  postgres_data:
     driver: local
 
 networks:

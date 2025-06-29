@@ -180,26 +180,26 @@ func (s *PlaylistService) GetAllPlaylists() ([]*models.Playlist, error) {
 }
 
 // GetPlaylistByID returns a playlist by its ID
-func (s *PlaylistService) GetPlaylistByID(id int) (*models.Playlist, error) {
+func (s *PlaylistService) GetPlaylistByID(id string) (*models.Playlist, error) {
 	return s.playlistRepo.GetByID(id)
 }
 
 // GetPlaylistSongs returns all songs in a playlist
-func (s *PlaylistService) GetPlaylistSongs(playlistID int) ([]*models.Song, error) {
+func (s *PlaylistService) GetPlaylistSongs(playlistID string) ([]*models.Song, error) {
 	return s.playlistRepo.GetSongs(playlistID)
 }
 
 // AddSongToPlaylist adds a song to a playlist at the specified position
-func (s *PlaylistService) AddSongToPlaylist(playlistID int, songID string, position int) error {
+func (s *PlaylistService) AddSongToPlaylist(playlistID string, songID string, position int) error {
 	return s.playlistRepo.AddSong(playlistID, songID, position)
 }
 
 // RemoveSongFromPlaylist removes a song from a playlist
-func (s *PlaylistService) RemoveSongFromPlaylist(playlistID int, songID string) error {
+func (s *PlaylistService) RemoveSongFromPlaylist(playlistID string, songID string) error {
 	return s.playlistRepo.RemoveSong(playlistID, songID)
 }
 
 // UpdateSongPosition updates the position of a song in a playlist
-func (s *PlaylistService) UpdateSongPosition(playlistID int, songID string, newPosition int) error {
+func (s *PlaylistService) UpdateSongPosition(playlistID string, songID string, newPosition int) error {
 	return s.playlistRepo.UpdateSongPosition(playlistID, songID, newPosition)
 }

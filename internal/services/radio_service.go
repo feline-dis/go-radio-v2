@@ -24,7 +24,7 @@ type SongRepositoryInterface interface {
 
 type PlaylistRepositoryInterface interface {
 	GetFirstPlaylist() (*models.Playlist, error)
-	GetSongs(playlistID int) ([]*models.Song, error)
+	GetSongs(playlistID string) ([]*models.Song, error)
 }
 
 type S3ServiceInterface interface {
@@ -243,8 +243,8 @@ func (s *RadioService) StartPlaybackLoop() error {
 		return fmt.Errorf("failed to get playlist songs: %w", err)
 	}
 	if len(songs) == 0 {
-		log.Printf("[ERROR] StartPlaybackLoop: Playlist %d is empty", playlist.ID)
-		return fmt.Errorf("playlist %d is empty", playlist.ID)
+		log.Printf("[ERROR] StartPlaybackLoop: Playlist %s is empty", playlist.ID)
+		return fmt.Errorf("playlist %s is empty", playlist.ID)
 	}
 
 	// Verify songs data

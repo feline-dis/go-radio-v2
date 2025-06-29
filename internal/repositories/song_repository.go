@@ -20,7 +20,7 @@ func (r *SongRepository) Create(song *models.Song) error {
 		INSERT INTO songs (
 			youtube_id, title, artist, album, duration, s3_key,
 			last_played, play_count, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 
 	now := time.Now()
@@ -45,7 +45,7 @@ func (r *SongRepository) GetByYouTubeID(youtubeID string) (*models.Song, error) 
 		SELECT youtube_id, title, artist, album, duration, s3_key,
 			   last_played, play_count, created_at, updated_at
 		FROM songs
-		WHERE youtube_id = ?
+		WHERE youtube_id = $1
 	`
 
 	song := &models.Song{}
@@ -75,10 +75,10 @@ func (r *SongRepository) GetByYouTubeID(youtubeID string) (*models.Song, error) 
 func (r *SongRepository) UpdatePlayStats(youtubeID string) error {
 	query := `
 		UPDATE songs
-		SET last_played = ?,
+		SET last_played = $1,
 			play_count = play_count + 1,
-			updated_at = ?
-		WHERE youtube_id = ?
+			updated_at = $2
+		WHERE youtube_id = $3
 	`
 
 	now := time.Now()

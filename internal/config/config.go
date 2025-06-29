@@ -41,7 +41,12 @@ type JWTConfig struct {
 }
 
 type DatabaseConfig struct {
-	Path string
+	Host     string
+	Port     string
+	User     string
+	Password string
+	DBName   string
+	SSLMode  string
 }
 
 type LoggingConfig struct {
@@ -103,7 +108,12 @@ func Load() *Config {
 			Expiration: getDurationEnv("JWT_EXPIRATION", 24*time.Hour),
 		},
 		Database: DatabaseConfig{
-			Path: getEnv("SQLITE_DB_PATH", "./data/radio.db"),
+			Host:     getEnv("POSTGRES_HOST", "localhost"),
+			Port:     getEnv("POSTGRES_PORT", "5432"),
+			User:     getEnv("POSTGRES_USER", "postgres"),
+			Password: getEnv("POSTGRES_PASSWORD", "postgres"),
+			DBName:   getEnv("POSTGRES_DB", "go_radio"),
+			SSLMode:  getEnv("POSTGRES_SSLMODE", "disable"),
 		},
 		Logging: LoggingConfig{
 			Level: getEnv("LOG_LEVEL", "info"),

@@ -18,36 +18,33 @@ func NewPlaylistRepository(db *sql.DB) *PlaylistRepository {
 func (r *PlaylistRepository) Create(playlist *models.Playlist) error {
 	query := `
 		INSERT INTO playlists (name, description, created_at, updated_at)
-		VALUES (?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id
 	`
 
 	now := time.Now()
-	result, err := r.db.Exec(query,
+	var id string
+	err := r.db.QueryRow(query,
 		playlist.Name,
 		playlist.Description,
 		now,
 		now,
-	)
+	).Scan(&id)
 	if err != nil {
 		return err
 	}
 
-	id, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-
-	playlist.ID = int(id)
+	playlist.ID = id
 	playlist.CreatedAt = now
 	playlist.UpdatedAt = now
 	return nil
 }
 
-func (r *PlaylistRepository) GetByID(id int) (*models.Playlist, error) {
+func (r *PlaylistRepository) GetByID(id string) (*models.Playlist, error) {
 	query := `
 		SELECT id, name, description, created_at, updated_at
 		FROM playlists
-		WHERE id = ?
+		WHERE id = $1
 	`
 
 	playlist := &models.Playlist{}
@@ -101,22 +98,22 @@ func (r *PlaylistRepository) GetAll() ([]*models.Playlist, error) {
 	return playlists, nil
 }
 
-func (r *PlaylistRepository) AddSong(playlistID int, youtubeID string, position int) error {
+func (r *PlaylistRepository) AddSong(playlistID string, youtubeID string, position int) error {
 	query := `
 		INSERT INTO playlist_songs (playlist_id, youtube_id, position, created_at)
-		VALUES (?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4)
 	`
 
 	_, err := r.db.Exec(query, playlistID, youtubeID, position, time.Now())
 	return err
 }
 
-func (r *PlaylistRepository) GetSongs(playlistID int) ([]*models.Song, error) {
+func (r *PlaylistRepository) GetSongs(playlistID string) ([]*models.Song, error) {
 	query := `
 		SELECT s.youtube_id, s.title, s.artist, s.album, s.duration, s.s3_key, s.last_played, s.play_count, s.created_at, s.updated_at
 		FROM playlist_songs ps
 		JOIN songs s ON ps.youtube_id = s.youtube_id
-		WHERE ps.playlist_id = ?
+		WHERE ps.playlist_id = $1
 		ORDER BY ps.position ASC
 	`
 
@@ -150,21 +147,21 @@ func (r *PlaylistRepository) GetSongs(playlistID int) ([]*models.Song, error) {
 	return songs, nil
 }
 
-func (r *PlaylistRepository) RemoveSong(playlistID int, youtubeID string) error {
+func (r *PlaylistRepository) RemoveSong(playlistID string, youtubeID string) error {
 	query := `
 		DELETE FROM playlist_songs
-		WHERE playlist_id = ? AND youtube_id = ?
+		WHERE playlist_id = $1 AND youtube_id = $2
 	`
 
 	_, err := r.db.Exec(query, playlistID, youtubeID)
 	return err
 }
 
-func (r *PlaylistRepository) UpdateSongPosition(playlistID int, youtubeID string, newPosition int) error {
+func (r *PlaylistRepository) UpdateSongPosition(playlistID string, youtubeID string, newPosition int) error {
 	query := `
 		UPDATE playlist_songs
-		SET position = ?
-		WHERE playlist_id = ? AND youtube_id = ?
+		SET position = $1
+		WHERE playlist_id = $2 AND youtube_id = $3
 	`
 
 	_, err := r.db.Exec(query, newPosition, playlistID, youtubeID)
@@ -175,7 +172,7 @@ func (r *PlaylistRepository) GetByName(name string) (*models.Playlist, error) {
 	query := `
 		SELECT id, name, description, created_at, updated_at
 		FROM playlists
-		WHERE name = ?
+		WHERE name = $1
 	`
 
 	playlist := &models.Playlist{}
