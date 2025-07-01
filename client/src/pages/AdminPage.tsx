@@ -2,7 +2,7 @@ import React from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { ProtectedRoute } from "../components/ProtectedRoute";
 import { LogoutButton } from "../components/LogoutButton";
-import { useRadio } from "../contexts/RadioContext";
+import { useRadio } from "../contexts/NewRadioContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 import api from "../lib/axios";
@@ -17,12 +17,12 @@ interface Playlist {
 }
 
 interface Song {
+  id: number;
   youtube_id: string;
   title: string;
-  artist: string;
-  album: string;
+  description: string;
   duration: number;
-  s3_key: string;
+  position: number;
 }
 
 interface QueueInfo {

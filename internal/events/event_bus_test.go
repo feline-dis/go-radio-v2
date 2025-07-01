@@ -81,11 +81,10 @@ func TestPublishSongChange(t *testing.T) {
 	}
 
 	queueInfo := &models.QueueInfo{
-		CurrentSong: currentSong,
-		NextSong:    nextSong,
-		Queue:       []*models.Song{currentSong, nextSong},
-		Remaining:   120.5,
-		StartTime:   time.Now(),
+		Queue:            []*models.Song{currentSong, nextSong},
+		Remaining:        120.5,
+		StartTime:        time.Now(),
+		CurrentSongIndex: 0,
 	}
 
 	eventBus.PublishSongChange(currentSong, nextSong, queueInfo)
@@ -109,6 +108,10 @@ func TestPublishSongChange(t *testing.T) {
 	if songChangeEvent.NextSong.YouTubeID != "test456" {
 		t.Errorf("Expected next song ID 'test456', got '%s'", songChangeEvent.NextSong.YouTubeID)
 	}
+
+	if songChangeEvent.CurrentSongIndex != 0 {
+		t.Errorf("Expected current song index 0, got %d", songChangeEvent.CurrentSongIndex)
+	}
 }
 
 func TestPublishQueueUpdate(t *testing.T) {
@@ -126,24 +129,13 @@ func TestPublishQueueUpdate(t *testing.T) {
 	eventBus.Subscribe(EventQueueUpdate, handler)
 
 	queueInfo := &models.QueueInfo{
-		CurrentSong: &models.Song{
-			YouTubeID: "test123",
-			Title:     "Test Song",
-			Artist:    "Test Artist",
-			Duration:  180,
-		},
-		NextSong: &models.Song{
-			YouTubeID: "test456",
-			Title:     "Next Song",
-			Artist:    "Next Artist",
-			Duration:  200,
-		},
 		Queue: []*models.Song{
 			{YouTubeID: "test123", Title: "Test Song", Artist: "Test Artist", Duration: 180},
 			{YouTubeID: "test456", Title: "Next Song", Artist: "Next Artist", Duration: 200},
 		},
-		Remaining: 120.5,
-		StartTime: time.Now(),
+		Remaining:        120.5,
+		StartTime:        time.Now(),
+		CurrentSongIndex: 0,
 	}
 
 	eventBus.PublishQueueUpdate(queueInfo)
@@ -170,6 +162,10 @@ func TestPublishQueueUpdate(t *testing.T) {
 
 	if len(queueUpdateEvent.Queue) != 2 {
 		t.Errorf("Expected queue length 2, got %d", len(queueUpdateEvent.Queue))
+	}
+
+	if queueUpdateEvent.CurrentSongIndex != 0 {
+		t.Errorf("Expected current song index 0, got %d", queueUpdateEvent.CurrentSongIndex)
 	}
 }
 

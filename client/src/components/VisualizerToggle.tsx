@@ -1,9 +1,10 @@
 import React from "react";
-import { useRadio } from "../contexts/RadioContext";
+import { useRadio } from "../contexts/NewRadioContext";
+import { useVisualizer } from "../contexts/VisualizerContext";
 
 export const VisualizerToggle: React.FC = () => {
-  const { isVisualizerEnabled, setIsVisualizerEnabled, isAudioContextReady } =
-    useRadio();
+  const { isAudioContextReady } = useRadio();
+  const { isVisualizerEnabled, setIsVisualizerEnabled } = useVisualizer();
 
   const handleToggle = () => {
     setIsVisualizerEnabled(!isVisualizerEnabled);

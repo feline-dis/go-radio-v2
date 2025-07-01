@@ -56,13 +56,14 @@ type PlaybackUpdate struct {
 }
 
 type SongChangeEvent struct {
-	CurrentSong *models.Song     `json:"current_song"`
-	NextSong    *models.Song     `json:"next_song"`
-	Queue       []*models.Song   `json:"queue"`
-	Playlist    *models.Playlist `json:"playlist"`
-	Remaining   float64          `json:"remaining"`
-	StartTime   time.Time        `json:"start_time"`
-	Timestamp   int64            `json:"timestamp"`
+	CurrentSong      *models.Song     `json:"current_song"`
+	NextSong         *models.Song     `json:"next_song"`
+	Queue            []*models.Song   `json:"queue"`
+	Playlist         *models.Playlist `json:"playlist"`
+	Remaining        float64          `json:"remaining"`
+	StartTime        time.Time        `json:"start_time"`
+	Timestamp        int64            `json:"timestamp"`
+	CurrentSongIndex int              `json:"current_song_index"`
 }
 
 type PlaybackControlEvent struct {
@@ -95,12 +96,13 @@ type PlaylistChangeEvent struct {
 }
 
 type QueueUpdate struct {
-	CurrentSong *models.Song     `json:"current_song"`
-	NextSong    *models.Song     `json:"next_song"`
-	Queue       []*models.Song   `json:"queue"`
-	Playlist    *models.Playlist `json:"playlist"`
-	Remaining   float64          `json:"remaining"`
-	StartTime   time.Time        `json:"start_time"`
+	CurrentSong      *models.Song     `json:"current_song"`
+	NextSong         *models.Song     `json:"next_song"`
+	Queue            []*models.Song   `json:"queue"`
+	Playlist         *models.Playlist `json:"playlist"`
+	Remaining        float64          `json:"remaining"`
+	StartTime        time.Time        `json:"start_time"`
+	CurrentSongIndex int              `json:"current_song_index"`
 }
 
 type UserReactionEvent struct {
@@ -165,13 +167,14 @@ func (h *Handler) handleSongChangeEvent(event events.Event) {
 	}
 
 	wsEvent := SongChangeEvent{
-		CurrentSong: songChangeEvent.CurrentSong,
-		NextSong:    songChangeEvent.NextSong,
-		Queue:       songChangeEvent.Queue,
-		Playlist:    songChangeEvent.Playlist,
-		Remaining:   songChangeEvent.Remaining,
-		StartTime:   songChangeEvent.StartTime,
-		Timestamp:   songChangeEvent.Timestamp,
+		CurrentSong:      songChangeEvent.CurrentSong,
+		NextSong:         songChangeEvent.NextSong,
+		Queue:            songChangeEvent.Queue,
+		Playlist:         songChangeEvent.Playlist,
+		Remaining:        songChangeEvent.Remaining,
+		StartTime:        songChangeEvent.StartTime,
+		Timestamp:        songChangeEvent.Timestamp,
+		CurrentSongIndex: songChangeEvent.CurrentSongIndex,
 	}
 
 	message := Message{
@@ -197,12 +200,13 @@ func (h *Handler) handleQueueUpdateEvent(event events.Event) {
 	}
 
 	wsEvent := QueueUpdate{
-		CurrentSong: queueUpdateEvent.CurrentSong,
-		NextSong:    queueUpdateEvent.NextSong,
-		Queue:       queueUpdateEvent.Queue,
-		Playlist:    queueUpdateEvent.Playlist,
-		Remaining:   queueUpdateEvent.Remaining,
-		StartTime:   queueUpdateEvent.StartTime,
+		CurrentSong:      queueUpdateEvent.CurrentSong,
+		NextSong:         queueUpdateEvent.NextSong,
+		Queue:            queueUpdateEvent.Queue,
+		Playlist:         queueUpdateEvent.Playlist,
+		Remaining:        queueUpdateEvent.Remaining,
+		StartTime:        queueUpdateEvent.StartTime,
+		CurrentSongIndex: queueUpdateEvent.CurrentSongIndex,
 	}
 
 	message := Message{
@@ -373,38 +377,6 @@ func (h *Handler) Run() {
 
 	}
 }
-
-// func (h *Handler) broadcastPlaybackUpdate() {
-// 	state := h.radioSvc.GetPlaybackState()
-// 	if state == nil || state.CurrentSong == nil {
-// 		return
-// 	}
-
-// 	elapsed := h.radioSvc.GetElapsedTime().Seconds()
-// 	remaining := h.radioSvc.GetRemainingTime().Seconds()
-
-// 	update := PlaybackUpdate{
-// 		Song:      state.CurrentSong,
-// 		Elapsed:   elapsed,
-// 		Remaining: remaining,
-// 		Paused:    state.Paused,
-// 		TotalTime: float64(state.CurrentSong.Duration),
-// 		Timestamp: time.Now().UnixMilli(),
-// 	}
-
-// 	message := Message{
-// 		Type:    "playback_update",
-// 		Payload: update,
-// 	}
-
-// 	data, err := json.Marshal(message)
-// 	if err != nil {
-// 		log.Printf("[ERROR] broadcastPlaybackUpdate: Failed to marshal update: %v", err)
-// 		return
-// 	}
-
-// 	h.broadcast <- data
-// }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)

@@ -1,21 +1,16 @@
 import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RadioProvider, useRadio } from "./contexts/RadioContext";
 import { ReactionProvider } from "./contexts/ReactionContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { VisualizerProvider } from "./contexts/VisualizerContext";
 import { RadioInitButton } from "./components/RadioInitButton";
 import { CreatePlaylist } from "./pages/CreatePlaylist";
 import { LoginPage } from "./pages/LoginPage";
 import { AdminPage } from "./pages/AdminPage";
 import { LogoutButton } from "./components/LogoutButton";
-import {
-  VissonanceVisualizer,
-  VissonancePresetSelector,
-} from "./components/VissonanceVisualizer";
-import { VisualizerToggle } from "./components/VisualizerToggle";
-import { VisualizerPerformance } from "./components/VisualizerPerformance";
 import { ReactionBar } from "./components/ReactionBar";
 import { Toaster } from "react-hot-toast";
+import { RadioProvider as NewRadioProvider } from "./contexts/NewRadioContext";
 
 // Create a client
 const queryClient = new QueryClient({
@@ -31,29 +26,11 @@ const queryClient = new QueryClient({
 });
 
 function AppContent() {
-  const {
-    isVisualizerEnabled,
-    currentVisualizerPreset,
-    setCurrentVisualizerPreset,
-  } = useRadio();
   const { isAuthenticated, user } = useAuth();
 
   return (
     <Router>
       <div className="min-h-screen bg-black flex flex-col relative">
-        {/* Visualizer Background */}
-        <VissonanceVisualizer
-          isEnabled={isVisualizerEnabled}
-          currentPreset={currentVisualizerPreset}
-          onPresetChange={setCurrentVisualizerPreset}
-        />
-        <VisualizerToggle />
-        <VissonancePresetSelector
-          currentPreset={currentVisualizerPreset}
-          onPresetChange={setCurrentVisualizerPreset}
-          isEnabled={isVisualizerEnabled}
-        />
-
         {/* Navigation */}
         <nav className="bg-black border-b border-gray-800 relative z-10">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -150,9 +127,11 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <ReactionProvider wsUrl={wsUrl}>
-            <RadioProvider wsUrl={wsUrl}>
-              <AppContent />
-            </RadioProvider>
+            <NewRadioProvider wsUrl={wsUrl}>
+              <VisualizerProvider>
+                <AppContent />
+              </VisualizerProvider>
+            </NewRadioProvider>
           </ReactionProvider>
         </AuthProvider>
       </QueryClientProvider>

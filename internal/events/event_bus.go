@@ -28,23 +28,25 @@ type Event struct {
 
 // SongChangeEvent represents a song change event
 type SongChangeEvent struct {
-	CurrentSong *models.Song     `json:"current_song"`
-	NextSong    *models.Song     `json:"next_song"`
-	Queue       []*models.Song   `json:"queue"`
-	Playlist    *models.Playlist `json:"playlist"`
-	Remaining   float64          `json:"remaining"`
-	StartTime   time.Time        `json:"start_time"`
-	Timestamp   int64            `json:"timestamp"`
+	CurrentSong      *models.Song     `json:"current_song"`
+	NextSong         *models.Song     `json:"next_song"`
+	Queue            []*models.Song   `json:"queue"`
+	Playlist         *models.Playlist `json:"playlist"`
+	Remaining        float64          `json:"remaining"`
+	StartTime        time.Time        `json:"start_time"`
+	Timestamp        int64            `json:"timestamp"`
+	CurrentSongIndex int              `json:"current_song_index"`
 }
 
 // QueueUpdateEvent represents a queue update event
 type QueueUpdateEvent struct {
-	CurrentSong *models.Song     `json:"current_song"`
-	NextSong    *models.Song     `json:"next_song"`
-	Queue       []*models.Song   `json:"queue"`
-	Playlist    *models.Playlist `json:"playlist"`
-	Remaining   float64          `json:"remaining"`
-	StartTime   time.Time        `json:"start_time"`
+	CurrentSong      *models.Song     `json:"current_song"`
+	NextSong         *models.Song     `json:"next_song"`
+	Queue            []*models.Song   `json:"queue"`
+	Playlist         *models.Playlist `json:"playlist"`
+	Remaining        float64          `json:"remaining"`
+	StartTime        time.Time        `json:"start_time"`
+	CurrentSongIndex int              `json:"current_song_index"`
 }
 
 // PlaybackUpdateEvent represents a playback update event
@@ -140,13 +142,14 @@ func (eb *EventBus) PublishSongChange(currentSong, nextSong *models.Song, queueI
 	event := Event{
 		Type: EventSongChange,
 		Payload: SongChangeEvent{
-			CurrentSong: currentSong,
-			NextSong:    nextSong,
-			Queue:       queueInfo.Queue,
-			Playlist:    queueInfo.Playlist,
-			Remaining:   queueInfo.Remaining,
-			StartTime:   queueInfo.StartTime,
-			Timestamp:   time.Now().UnixMilli(),
+			CurrentSong:      currentSong,
+			NextSong:         nextSong,
+			Queue:            queueInfo.Queue,
+			Playlist:         queueInfo.Playlist,
+			Remaining:        queueInfo.Remaining,
+			StartTime:        queueInfo.StartTime,
+			CurrentSongIndex: queueInfo.CurrentSongIndex,
+			Timestamp:        time.Now().UnixMilli(),
 		},
 		Timestamp: time.Now(),
 	}
@@ -159,13 +162,26 @@ func (eb *EventBus) PublishQueueUpdate(queueInfo *models.QueueInfo) {
 		return
 	}
 
+	// Get current and next songs safely
+	var currentSong, nextSong *models.Song
+	if len(queueInfo.Queue) > 0 && queueInfo.CurrentSongIndex >= 0 && queueInfo.CurrentSongIndex < len(queueInfo.Queue) {
+		currentSong = queueInfo.Queue[queueInfo.CurrentSongIndex]
+		nextIndex := (queueInfo.CurrentSongIndex + 1) % len(queueInfo.Queue)
+		if nextIndex < len(queueInfo.Queue) {
+			nextSong = queueInfo.Queue[nextIndex]
+		}
+	}
+
 	event := Event{
 		Type: EventQueueUpdate,
 		Payload: QueueUpdateEvent{
-			Queue:     queueInfo.Queue,
-			Playlist:  queueInfo.Playlist,
-			Remaining: queueInfo.Remaining,
-			StartTime: queueInfo.StartTime,
+			CurrentSong:      currentSong,
+			NextSong:         nextSong,
+			Queue:            queueInfo.Queue,
+			Playlist:         queueInfo.Playlist,
+			Remaining:        queueInfo.Remaining,
+			StartTime:        queueInfo.StartTime,
+			CurrentSongIndex: queueInfo.CurrentSongIndex,
 		},
 		Timestamp: time.Now(),
 	}

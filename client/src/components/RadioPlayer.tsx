@@ -1,16 +1,18 @@
 import { SpeakerWaveIcon, SpeakerXMarkIcon } from "@heroicons/react/24/solid";
 import { ChevronUpIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
-import { useRadio } from "../contexts/RadioContext";
+import { useRadio } from "../contexts/NewRadioContext";
 import { useEffect, useRef, useState } from "react";
 import { AnimatedEmotes } from "./AnimatedEmotes";
+import { VissonanceVisualizer, VissonancePresetSelector } from "./VissonanceVisualizer";
+import { VisualizerToggle } from "./VisualizerToggle";
 
 interface Song {
+  id: number;
   youtube_id: string;
   title: string;
-  artist: string;
-  album: string;
+  description: string;
   duration: number;
-  s3_key: string;
+  position: number;
 }
 
 interface QueueInfo {
@@ -25,35 +27,28 @@ interface QueueInfo {
   CurrentSongIndex: number;
 }
 
-// Helper functions to derive current and next songs from queue and index
-const getCurrentSong = (queueInfo: QueueInfo | null): Song | null => {
-  if (!queueInfo || !queueInfo.Queue || queueInfo.Queue.length === 0) {
-    return null;
-  }
-  
-  const currentIndex = queueInfo.CurrentSongIndex;
-  if (currentIndex < 0 || currentIndex >= queueInfo.Queue.length) {
-    return null;
-  }
-  
-  return queueInfo.Queue[currentIndex];
-};
+
 
 // Separate ProgressBar component that handles its own updates
 const ProgressBar = ({
   currentSong,
-  elapsed,
+  queueInfo,
 }: {
   currentSong: Song | null;
-  elapsed: number;
+  queueInfo: QueueInfo | null;
 }) => {
-  const [localElapsed, setLocalElapsed] = useState(elapsed);
+  const { calculateElapsedTime } = useRadio();
+  const [localElapsed, setLocalElapsed] = useState(0);
   const lastUpdateRef = useRef(Date.now());
   const rafRef = useRef<number | null>(null);
 
+  // Calculate initial elapsed time
   useEffect(() => {
-    setLocalElapsed(elapsed);
-  }, [elapsed]);
+    if (queueInfo && currentSong) {
+      const elapsed = calculateElapsedTime(queueInfo.StartTime, currentSong.duration);
+      setLocalElapsed(elapsed);
+    }
+  }, [queueInfo, currentSong]);
 
   useEffect(() => {
     const updateElapsed = () => {
@@ -99,8 +94,8 @@ const ProgressBar = ({
 
 export const RadioPlayer = () => {
   const {
+    currentSongFile,
     queueInfo,
-    elapsed,
     volume,
     isMuted,
     isAudioLoading,
@@ -108,10 +103,12 @@ export const RadioPlayer = () => {
     isPlaying,
     setVolume,
     setIsMuted,
+    startPlayback,
+    getCurrentSong,
+    calculateElapsedTime,
   } = useRadio();
 
   const [isCompactMode, setIsCompactMode] = useState(false);
-  const currentSong = getCurrentSong(queueInfo);
 
   const handleVolumeChange = (newVolume: number) => {
     setVolume(newVolume);
@@ -130,8 +127,20 @@ export const RadioPlayer = () => {
     setIsCompactMode(!isCompactMode);
   };
 
+      const currentSong = getCurrentSong();
+  useEffect(() => {
+    if (currentSongFile) {
+      if (!currentSong) return;
+      const elapsed = calculateElapsedTime(queueInfo?.StartTime || new Date().toISOString(), currentSong.duration);
+      startPlayback(currentSongFile, elapsed);
+    }
+  }, [currentSongFile, startPlayback]);
+
   return (
     <>
+      <VissonanceVisualizer />
+      <VisualizerToggle />
+      <VissonancePresetSelector />
       <AnimatedEmotes />
       <div className={`
         ${isCompactMode 
@@ -212,7 +221,7 @@ export const RadioPlayer = () => {
         <div className={isCompactMode ? 'mb-1' : 'mb-2'}>
           <ProgressBar
             currentSong={currentSong}
-            elapsed={elapsed}
+            queueInfo={queueInfo}
           />
         </div>
 
