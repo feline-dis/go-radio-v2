@@ -42,7 +42,7 @@ func (rc *ReactionController) SendReaction(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Publish reaction to event bus
-	rc.eventBus.PublishUserReaction(req.UserID, req.Emote)
+	rc.eventBus.PublishUserReaction(req.Emote)
 
 	// Return success response
 	w.Header().Set("Content-Type", "application/json")

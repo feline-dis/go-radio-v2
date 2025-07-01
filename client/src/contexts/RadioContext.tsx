@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import api from "../lib/axios";
+import { useWebSocket, useWebSocketEvent } from "./WebSocketContext";
 
 const RadioContext = createContext<RadioContextType | undefined>(undefined);
 
@@ -14,6 +15,12 @@ export interface SongChangeEvent {
   Remaining: number;
   StartTime: string;
   CurrentSongIndex: number;
+}
+
+export interface Playlist {
+  id: number;
+  name: string;
+  description: string;
 }
 
 export interface Song {
@@ -63,7 +70,8 @@ interface RadioContextType {
   startPlayback: (audioBuf: ArrayBuffer, elapsed: number) => void;
   getCurrentSong: () => Song | null;
   calculateElapsedTime: (startTime: string, duration?: number) => number;
-
+  handleVolumeChange: (newVolume: number) => void;
+  toggleMute: () => void;
 
   // Audio refs for visualizer
   audioContextRef: React.MutableRefObject<AudioContext | null>;
@@ -78,7 +86,10 @@ export const useRadio = () => {
   return context;
 };
 
-export const RadioProvider: React.FC<{ children?: React.ReactNode, wsUrl: string }> = ({ children, wsUrl }) => {
+export const RadioProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
+  // Use centralized WebSocket connection
+  const { isConnected: isWebSocketConnected } = useWebSocket();
+  
   const [queueInfo, setQueueInfo] = useState<QueueInfo>({
     Queue: [],
     Playlist: null,
@@ -97,16 +108,15 @@ export const RadioProvider: React.FC<{ children?: React.ReactNode, wsUrl: string
   const [isPlaying, setIsPlaying] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [isAudioContextReady, setIsAudioContextReady] = useState(false);
-  const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const [isQueueLoading] = useState(false);
   const [isUserInteracted, setIsUserInteracted] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(0.5);
+  
   // Refs
   const audioContextRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
 
   const initAudioContext = useCallback(() => {
     if (!audioContextRef.current) {
@@ -159,7 +169,7 @@ export const RadioProvider: React.FC<{ children?: React.ReactNode, wsUrl: string
 
       return arrayBuffer;
     } catch (error) {
-      toast.error("Failed to fetch song file");
+      toast.error("Failed getting song file");
       return null;
     }
   }
@@ -183,6 +193,7 @@ export const RadioProvider: React.FC<{ children?: React.ReactNode, wsUrl: string
       console.log("toPlay", toPlay);
 
       if (sourceNodeRef.current) {
+        console.log("stopping current song")
         sourceNodeRef.current.stop();
         sourceNodeRef.current.disconnect();
         sourceNodeRef.current = null;
@@ -219,13 +230,62 @@ export const RadioProvider: React.FC<{ children?: React.ReactNode, wsUrl: string
       console.error("Error changing song:", error);
       toast.error("Failed to change song");
     }
-  }, []);
+  }, [audioContextRef, gainNodeRef, sourceNodeRef, nextSongFile, fetchSongFile, startPlayback]);
 
 
   const handleUserInteraction = useCallback(() => {
     setIsUserInteracted(true);  
     initAudioContext();
   }, [])
+
+  const calculateElapsedTime = (startTime: string, duration?: number) => {
+    const now = new Date();
+    const startTimeDate = new Date(startTime);
+    const elapsed = (now.getTime() - startTimeDate.getTime()) / 1000;
+    if (duration) {
+      return Math.min(elapsed, duration);
+    }
+    return Math.max(0, elapsed);
+  }
+
+  const getCurrentSong = () => {
+    if (!queueInfo.Queue || queueInfo.Queue.length === 0) return null;
+    return queueInfo.Queue[queueInfo.CurrentSongIndex];
+  }
+
+  const handleVolumeChange = (newVolume: number) => {
+    if (!audioContextRef.current || !gainNodeRef.current) return;
+
+    console.log("setting volume", newVolume)
+
+    gainNodeRef.current.gain.setValueAtTime(newVolume, audioContextRef.current.currentTime);
+    setVolume(newVolume);
+    if (newVolume === 0) {
+      setIsMuted(true);
+    } else if (isMuted) {
+      setIsMuted(false);
+    }
+  };
+
+  const handleMute = () => {
+    if (!audioContextRef.current || !gainNodeRef.current) return;
+    gainNodeRef.current.gain.setValueAtTime(0, audioContextRef.current.currentTime);
+    setIsMuted(true);
+  }
+
+  const handleUnmute = () => {
+    if (!audioContextRef.current || !gainNodeRef.current) return;
+    gainNodeRef.current.gain.setValueAtTime(volume, audioContextRef.current.currentTime);
+    setIsMuted(false);
+  }
+
+  const toggleMute = () => {
+    if (isMuted) {
+      handleUnmute();
+    } else {
+      handleMute();
+    }
+  }
 
   useEffect(() => {
     document.addEventListener("click", handleUserInteraction);
@@ -256,80 +316,34 @@ export const RadioProvider: React.FC<{ children?: React.ReactNode, wsUrl: string
         setNextSongFileError(null);
       } catch (error) {
         console.error("Error fetching queue:", error);
-        toast.error("Failed to fetch queue");
+        toast.error("/handlFailed to fetch queue");
       }
     };
 
     handleMount();
   }, [audioContextRef, gainNodeRef]);
 
-  useEffect(() => {
-    const connectWebSocket = () => {
-      console.log("Connecting to radio server at:", wsUrl);
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+  // Subscribe to WebSocket events using the centralized event bus
+  useWebSocketEvent('song_change', (data) => {
+    handleSongChange({
+      queue: data.queue,
+      playlist: data.playlist,
+      remaining: data.remaining,
+      start_time: data.start_time,
+      current_song_index: data.current_song_index,
+    });
+  }, []);
 
-      ws.onopen = () => {
-        console.log("✅ Connected to radio server successfully");
-        setIsWebSocketConnected(true);
-      };
+  useWebSocketEvent('queue_update', (data) => {
+    setQueueInfo({
+      Queue: data.queue,
+      Playlist: data.playlist,
+      Remaining: data.remaining,
+      StartTime: data.start_time,
+      CurrentSongIndex: data.current_song_index,
+    });
+  }, []);
 
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-
-          switch (data.type) {
-            case "song_change":
-              handleSongChange(data.payload);
-              break;
-            case "pong":
-              console.log("🏓 Received pong from server");
-              break;
-            default:
-              console.log("❓ Unknown WebSocket message type:", data.type);
-          }
-        } catch (error) {
-          console.error("❌ Failed to parse WebSocket message:", error);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error("❌ WebSocket error:", error);
-        setIsWebSocketConnected(false);
-        toast.error("Lost connection to radio server");
-      };
-
-      ws.onclose = (event) => {
-        console.log("🔌 Disconnected from radio server. Code:", event.code);
-        setIsWebSocketConnected(false);
-        // Attempt to reconnect after 5 seconds
-        setTimeout(connectWebSocket, 5000);
-      };
-    };
-
-    connectWebSocket();
-
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
-  }, [wsUrl, handleSongChange]);
-
-  const calculateElapsedTime = (startTime: string, duration?: number) => {
-    const now = new Date();
-    const startTimeDate = new Date(startTime);
-    const elapsed = (now.getTime() - startTimeDate.getTime()) / 1000;
-    if (duration) {
-      return Math.min(elapsed, duration);
-    }
-    return Math.max(0, elapsed);
-  }
-
-  const getCurrentSong = () => {
-    if (!queueInfo.Queue || queueInfo.Queue.length === 0) return null;
-    return queueInfo.Queue[queueInfo.CurrentSongIndex];
-  }
 
   const value: RadioContextType = {
     queueInfo,
@@ -359,6 +373,8 @@ export const RadioProvider: React.FC<{ children?: React.ReactNode, wsUrl: string
     startPlayback,
     getCurrentSong,
     calculateElapsedTime,
+    handleVolumeChange,
+    toggleMute,
   }
 
   return (

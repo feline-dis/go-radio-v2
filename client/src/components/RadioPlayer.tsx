@@ -2,9 +2,9 @@ import { SpeakerWaveIcon, SpeakerXMarkIcon } from "@heroicons/react/24/solid";
 import { ChevronUpIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import { useRadio } from "../contexts/RadioContext";
 import { useEffect, useRef, useState } from "react";
-import { AnimatedEmotes } from "./AnimatedEmotes";
 import { VissonanceVisualizer, VissonancePresetSelector } from "./VissonanceVisualizer";
 import { VisualizerToggle } from "./VisualizerToggle";
+import { ReactionBar } from "./ReactionBar";
 
 interface Song {
   id: number;
@@ -101,33 +101,23 @@ export const RadioPlayer = () => {
     isAudioLoading,
     isAudioContextReady,
     isPlaying,
-    setVolume,
-    setIsMuted,
     startPlayback,
     getCurrentSong,
     calculateElapsedTime,
-  } = useRadio();
+    handleVolumeChange,
+    toggleMute,
+    } = useRadio();
 
   const [isCompactMode, setIsCompactMode] = useState(false);
 
-  const handleVolumeChange = (newVolume: number) => {
-    setVolume(newVolume);
-    if (newVolume === 0) {
-      setIsMuted(true);
-    } else if (isMuted) {
-      setIsMuted(false);
-    }
-  };
 
-  const toggleMute = () => {
-    setIsMuted(!isMuted);
-  };
 
   const toggleCompactMode = () => {
     setIsCompactMode(!isCompactMode);
   };
 
-      const currentSong = getCurrentSong();
+  const currentSong = getCurrentSong();
+  
   useEffect(() => {
     if (currentSongFile) {
       if (!currentSong) return;
@@ -141,11 +131,11 @@ export const RadioPlayer = () => {
       <VissonanceVisualizer />
       <VisualizerToggle />
       <VissonancePresetSelector />
-      <AnimatedEmotes />
+      <ReactionBar />
       <div className={`
         ${isCompactMode 
           ? 'fixed bottom-4 left-4 right-4 sm:bottom-6 sm:left-20 sm:right-20 z-50 bg-black border border-gray-800 shadow-2xl p-2 sm:p-3 rounded-sm' 
-          : 'w-full max-w-4xl mx-auto p-3 sm:p-4 bg-black border border-gray-800 shadow-2xl'
+          : 'w-full max-w-4xl mx-auto p-3 sm:p-4 bg-black border border-gray-800 shadow-2xl z-50'
         }
       `}>
         {/* Compact Mode Toggle */}

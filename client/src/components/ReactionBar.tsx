@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useReactions } from "../contexts/ReactionContext";
+import { AnimatedEmotes } from "./AnimatedEmotes";
 
 const EMOTES = [
   { id: "heart", emoji: "❤️", label: "Love" },
@@ -13,24 +14,17 @@ const EMOTES = [
 ];
 
 export const ReactionBar = () => {
-  const { sendReaction, isWebSocketConnected } = useReactions();
+  const { sendReaction, isWebSocketConnected, } = useReactions();
   const [selectedEmote, setSelectedEmote] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
   const handleEmoteClick = (emoteId: string) => {
     setSelectedEmote(emoteId);
 
-    // Generate a simple user ID for demo purposes
-    // In a real app, this would come from user authentication
-    const userId = `user_${Math.random().toString(36).substr(2, 9)}`;
-
-    sendReaction(userId, emoteId);
+    sendReaction(emoteId);
 
     // Reset selection after a short delay
     setTimeout(() => setSelectedEmote(null), 200);
-    
-    // Close the reaction bar after sending a reaction
-    setIsOpen(false);
   };
 
   const toggleReactionBar = () => {
@@ -38,6 +32,8 @@ export const ReactionBar = () => {
   };
 
   return (
+    <>
+    <AnimatedEmotes />
     <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50">
       {/* Reaction Panel - extends upward when open */}
       {isOpen && (
@@ -94,5 +90,7 @@ export const ReactionBar = () => {
         )}
       </button>
     </div>
+    
+    </>
   );
 }; 

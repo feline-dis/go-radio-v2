@@ -4,7 +4,7 @@ export const AnimatedEmotes = () => {
   const { reactions } = useReactions();
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+    <div className="fixed inset-0 pointer-events-none overflow-hidden z-[100]">
       {reactions.map((reaction) => (
         <div
           key={reaction.id}
