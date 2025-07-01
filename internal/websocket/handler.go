@@ -42,8 +42,16 @@ type Client struct {
 }
 
 type Message struct {
-	Type    string      `json:"type"`
-	Payload interface{} `json:"payload"`
+	Type      string      `json:"type"`
+	Payload   interface{} `json:"payload"`
+	Timestamp int64       `json:"timestamp,omitempty"`
+}
+
+// FrontendMessage matches the format expected by the frontend WebSocket handler
+type FrontendMessage struct {
+	Type      string      `json:"type"`
+	Data      interface{} `json:"data"`
+	Timestamp int64       `json:"timestamp,omitempty"`
 }
 
 type PlaybackUpdate struct {
@@ -106,7 +114,6 @@ type QueueUpdate struct {
 }
 
 type UserReactionEvent struct {
-	UserID    string `json:"user_id"`
 	Emote     string `json:"emote"`
 	Timestamp int64  `json:"timestamp"`
 }
@@ -116,9 +123,8 @@ type ClientRequest struct {
 }
 
 type ReactionRequest struct {
-	Type   string `json:"type"`
-	UserID string `json:"user_id"`
-	Emote  string `json:"emote"`
+	Type  string `json:"type"`
+	Emote string `json:"emote"`
 }
 
 type Handler struct {
@@ -178,8 +184,9 @@ func (h *Handler) handleSongChangeEvent(event events.Event) {
 	}
 
 	message := Message{
-		Type:    "song_change",
-		Payload: wsEvent,
+		Type:      "song_change",
+		Payload:   wsEvent,
+		Timestamp: time.Now().UnixMilli(),
 	}
 
 	data, err := json.Marshal(message)
@@ -210,8 +217,9 @@ func (h *Handler) handleQueueUpdateEvent(event events.Event) {
 	}
 
 	message := Message{
-		Type:    "queue_update",
-		Payload: wsEvent,
+		Type:      "queue_update",
+		Payload:   wsEvent,
+		Timestamp: time.Now().UnixMilli(),
 	}
 
 	data, err := json.Marshal(message)
@@ -231,15 +239,17 @@ func (h *Handler) handleUserReactionEvent(event events.Event) {
 		return
 	}
 
+	log.Printf("[DEBUG] handleUserReactionEvent: Broadcasting reaction from %s: %s", reactionEvent.Emote)
+
 	wsEvent := UserReactionEvent{
-		UserID:    reactionEvent.UserID,
 		Emote:     reactionEvent.Emote,
 		Timestamp: reactionEvent.Timestamp,
 	}
 
 	message := Message{
-		Type:    "user_reaction",
-		Payload: wsEvent,
+		Type:      "user_reaction",
+		Payload:   wsEvent,
+		Timestamp: time.Now().UnixMilli(),
 	}
 
 	data, err := json.Marshal(message)
@@ -267,8 +277,9 @@ func (h *Handler) handleSkipEvent(event events.Event) {
 	}
 
 	message := Message{
-		Type:    "skip",
-		Payload: wsEvent,
+		Type:      "skip",
+		Payload:   wsEvent,
+		Timestamp: time.Now().UnixMilli(),
 	}
 
 	data, err := json.Marshal(message)
@@ -296,8 +307,9 @@ func (h *Handler) handlePreviousEvent(event events.Event) {
 	}
 
 	message := Message{
-		Type:    "previous",
-		Payload: wsEvent,
+		Type:      "previous",
+		Payload:   wsEvent,
+		Timestamp: time.Now().UnixMilli(),
 	}
 
 	data, err := json.Marshal(message)
@@ -326,8 +338,9 @@ func (h *Handler) handlePlaylistChangeEvent(event events.Event) {
 	}
 
 	message := Message{
-		Type:    "playlist_change",
-		Payload: wsEvent,
+		Type:      "playlist_change",
+		Payload:   wsEvent,
+		Timestamp: time.Now().UnixMilli(),
 	}
 
 	data, err := json.Marshal(message)
@@ -411,8 +424,9 @@ func (c *Client) handleMessage(messageType int, data []byte) {
 	case "ping":
 		// Send pong response
 		response := Message{
-			Type:    "pong",
-			Payload: map[string]interface{}{"timestamp": time.Now().UnixMilli()},
+			Type:      "pong",
+			Payload:   map[string]interface{}{"timestamp": time.Now().UnixMilli()},
+			Timestamp: time.Now().UnixMilli(),
 		}
 		if responseData, err := json.Marshal(response); err == nil {
 			select {
@@ -420,19 +434,29 @@ func (c *Client) handleMessage(messageType int, data []byte) {
 			default:
 			}
 		}
-	case "reaction":
-		// Handle reaction request
-		var reactionReq ReactionRequest
-		if err := json.Unmarshal(data, &reactionReq); err != nil {
-			log.Printf("[ERROR] handleMessage: Failed to unmarshal reaction request: %v", err)
+	case "user_reaction":
+		// Handle user reaction request - the message structure matches WebSocketMessage format
+		var message struct {
+			Type    string `json:"type"`
+			Payload struct {
+				Emote     string `json:"emote"`
+				Timestamp int64  `json:"timestamp"`
+			} `json:"payload"`
+			Timestamp int64 `json:"timestamp"`
+		}
+
+		if err := json.Unmarshal(data, &message); err != nil {
+			log.Printf("[ERROR] handleMessage: Failed to unmarshal user_reaction request: %v", err)
 			return
 		}
+
+		log.Printf("[DEBUG] Received user reaction: emote=%s", message.Payload.Emote)
 
 		// Publish reaction to event bus
 		if c.handler.eventBus != nil {
 			c.handler.eventBus.(interface {
-				PublishUserReaction(userID, emote string)
-			}).PublishUserReaction(reactionReq.UserID, reactionReq.Emote)
+				PublishUserReaction(emote string)
+			}).PublishUserReaction(message.Payload.Emote)
 		}
 	}
 }

@@ -3,12 +3,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactionProvider } from "./contexts/ReactionContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { VisualizerProvider } from "./contexts/VisualizerContext";
+import { WebSocketProvider } from "./contexts/WebSocketContext";
 import { RadioInitButton } from "./components/RadioInitButton";
 import { CreatePlaylist } from "./pages/CreatePlaylist";
 import { LoginPage } from "./pages/LoginPage";
 import { AdminPage } from "./pages/AdminPage";
 import { LogoutButton } from "./components/LogoutButton";
 import { ReactionBar } from "./components/ReactionBar";
+import { AnimatedEmotes } from "./components/AnimatedEmotes";
 import { Toaster } from "react-hot-toast";
 import { RadioProvider } from "./contexts/RadioContext";
 
@@ -60,6 +62,7 @@ function AppContent() {
                     </Link>
                   )}
 
+
                   {isAuthenticated && (
                     <Link
                       to="/admin"
@@ -108,6 +111,9 @@ function AppContent() {
           </Routes>
         </main>
 
+        {/* Animated Emotes - Rendered at top level for proper z-index */}
+        <AnimatedEmotes />
+        
         {/* Floating Reaction Bar */}
         <ReactionBar />
       </div>
@@ -119,20 +125,22 @@ function App() {
   // In development, we'll connect to the local server
   const wsUrl = import.meta.env.DEV
     ? "ws://localhost:8080/ws"
-    : "wss://" + window.location.host + "/ws";
+    : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
 
   return (
     <>
       <Toaster position="top-right" />
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <ReactionProvider wsUrl={wsUrl}>
-            <RadioProvider wsUrl={wsUrl}>
-              <VisualizerProvider>
-                <AppContent />
-              </VisualizerProvider>
-            </RadioProvider>
-          </ReactionProvider>
+          <WebSocketProvider url={wsUrl}>
+            <ReactionProvider>
+              <RadioProvider>
+                <VisualizerProvider>
+                  <AppContent />
+                </VisualizerProvider>
+              </RadioProvider>
+            </ReactionProvider>
+          </WebSocketProvider>
         </AuthProvider>
       </QueryClientProvider>
     </>

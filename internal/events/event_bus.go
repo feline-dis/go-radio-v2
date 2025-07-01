@@ -61,7 +61,6 @@ type PlaybackUpdateEvent struct {
 
 // UserReactionEvent represents a user reaction event
 type UserReactionEvent struct {
-	UserID    string `json:"user_id"`
 	Emote     string `json:"emote"`
 	Timestamp int64  `json:"timestamp"`
 }
@@ -206,11 +205,10 @@ func (eb *EventBus) PublishPlaybackUpdate(song *models.Song, elapsed, remaining 
 }
 
 // PublishUserReaction publishes a user reaction event
-func (eb *EventBus) PublishUserReaction(userID, emote string) {
+func (eb *EventBus) PublishUserReaction(emote string) {
 	event := Event{
 		Type: EventUserReaction,
 		Payload: UserReactionEvent{
-			UserID:    userID,
 			Emote:     emote,
 			Timestamp: time.Now().UnixMilli(),
 		},
