@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useRadio } from "../contexts/NewRadioContext";
+import { useRadio } from "../contexts/RadioContext";
 import { RadioPlayer } from "./RadioPlayer";
 
 export const RadioInitButton = () => {

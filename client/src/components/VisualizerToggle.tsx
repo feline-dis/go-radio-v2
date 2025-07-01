@@ -1,5 +1,5 @@
 import React from "react";
-import { useRadio } from "../contexts/NewRadioContext";
+import { useRadio } from "../contexts/RadioContext";
 import { useVisualizer } from "../contexts/VisualizerContext";
 
 export const VisualizerToggle: React.FC = () => {

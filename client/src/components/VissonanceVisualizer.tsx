@@ -4,7 +4,7 @@ import React, {
   useCallback,
   useState,
 } from "react";
-import { useRadio } from "../contexts/NewRadioContext";
+import { useRadio } from "../contexts/RadioContext";
 import { useVisualizer } from "../contexts/VisualizerContext";
 
 // Dynamic imports to handle ES module issues

@@ -2,7 +2,7 @@ import React from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { ProtectedRoute } from "../components/ProtectedRoute";
 import { LogoutButton } from "../components/LogoutButton";
-import { useRadio } from "../contexts/NewRadioContext";
+import { useRadio } from "../contexts/RadioContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 import api from "../lib/axios";

@@ -10,7 +10,7 @@ import { AdminPage } from "./pages/AdminPage";
 import { LogoutButton } from "./components/LogoutButton";
 import { ReactionBar } from "./components/ReactionBar";
 import { Toaster } from "react-hot-toast";
-import { RadioProvider as NewRadioProvider } from "./contexts/NewRadioContext";
+import { RadioProvider } from "./contexts/RadioContext";
 
 // Create a client
 const queryClient = new QueryClient({
@@ -127,11 +127,11 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <ReactionProvider wsUrl={wsUrl}>
-            <NewRadioProvider wsUrl={wsUrl}>
+            <RadioProvider wsUrl={wsUrl}>
               <VisualizerProvider>
                 <AppContent />
               </VisualizerProvider>
-            </NewRadioProvider>
+            </RadioProvider>
           </ReactionProvider>
         </AuthProvider>
       </QueryClientProvider>

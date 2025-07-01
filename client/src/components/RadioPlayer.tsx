@@ -1,6 +1,6 @@
 import { SpeakerWaveIcon, SpeakerXMarkIcon } from "@heroicons/react/24/solid";
 import { ChevronUpIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
-import { useRadio } from "../contexts/NewRadioContext";
+import { useRadio } from "../contexts/RadioContext";
 import { useEffect, useRef, useState } from "react";
 import { AnimatedEmotes } from "./AnimatedEmotes";
 import { VissonanceVisualizer, VissonancePresetSelector } from "./VissonanceVisualizer";

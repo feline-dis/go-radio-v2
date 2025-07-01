@@ -1,25 +1,31 @@
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useRef,
-  useCallback,
-} from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import api from "../lib/axios";
-import { toast } from "react-hot-toast";
 
-interface Song {
-  youtube_id: string;
-  title: string;
-  artist: string;
-  album: string;
-  duration: number;
-  s3_key: string;
+const RadioContext = createContext<RadioContextType | undefined>(undefined);
+
+export interface SongChangeEvent {
+  Queue: Song[];
+  Playlist: {
+    id: number;
+    name: string;
+    description: string;
+  } | null;
+  Remaining: number;
+  StartTime: string;
+  CurrentSongIndex: number;
 }
 
-interface QueueInfo {
+export interface Song {
+  id: number;
+  youtube_id: string;
+  title: string;
+  description: string;
+  duration: number;
+  position: number;
+}
+
+export interface QueueInfo {
   Queue: Song[];
   Playlist: {
     id: number;
@@ -32,141 +38,76 @@ interface QueueInfo {
 }
 
 interface RadioContextType {
-  // State
-  elapsed: number;
-  volume: number;
-  isMuted: boolean;
+  queueInfo: QueueInfo;
+  queueError: unknown;
+  queueLoading: boolean;
+  currentSongFile: ArrayBuffer | null;
+  currentSongFileLoading: boolean;
+  currentSongFileError: unknown;
+  nextSongFile: ArrayBuffer | null;
+  nextSongFileLoading: boolean;
+  nextSongFileError: unknown;
+  isPlaying: boolean;
   isAudioLoading: boolean;
   isAudioContextReady: boolean;
   isWebSocketConnected: boolean;
   isQueueLoading: boolean;
-  isCurrentSongFileLoading: boolean;
   isUserInteracted: boolean;
-  isPlaying: boolean;
-  isVisualizerEnabled: boolean;
-  currentVisualizerPreset: string;
-
-  // Actions
-  setElapsed: (elapsed: number) => void;
+  isMuted: boolean;
+  volume: number;
+  isReady: boolean;
   setVolume: (volume: number) => void;
   setIsMuted: (muted: boolean) => void;
   setIsUserInteracted: (interacted: boolean) => void;
-  setIsVisualizerEnabled: (enabled: boolean) => void;
-  setCurrentVisualizerPreset: (preset: string) => void;
-
-  // Data
-  queueInfo: QueueInfo | null;
-  queueError: unknown;
-  currentSongFile: ArrayBuffer | null;
-
-  // Functions
-  startPlayback: () => void;
-  seekTo: (position: number) => void;
   initAudioContext: () => void;
-  cleanup: () => void;
-  refetchQueue: () => void;
+  startPlayback: (audioBuf: ArrayBuffer, elapsed: number) => void;
+  getCurrentSong: () => Song | null;
+  calculateElapsedTime: (startTime: string, duration?: number) => number;
 
-  // Computed
-  isReady: boolean;
 
   // Audio refs for visualizer
   audioContextRef: React.MutableRefObject<AudioContext | null>;
   gainNodeRef: React.MutableRefObject<GainNode | null>;
 }
 
-const RadioContext = createContext<RadioContextType | undefined>(undefined);
-
 export const useRadio = () => {
   const context = useContext(RadioContext);
   if (context === undefined) {
-    throw new Error("useRadio must be used within a RadioProvider");
+    throw new Error("useRadio must be used within a RadioProvider :p");
   }
   return context;
 };
 
-interface RadioProviderProps {
-  children: React.ReactNode;
-  wsUrl: string;
-}
-
-export const RadioProvider: React.FC<RadioProviderProps> = ({
-  children,
-  wsUrl,
-}) => {
-  // State
-  const [elapsed, setElapsed] = useState(0);
-  const [volume, setVolume] = useState(0.7);
-  const [isMuted, setIsMuted] = useState(false);
+export const RadioProvider: React.FC<{ children?: React.ReactNode, wsUrl: string }> = ({ children, wsUrl }) => {
+  const [queueInfo, setQueueInfo] = useState<QueueInfo>({
+    Queue: [],
+    Playlist: null,
+    Remaining: 0,
+    StartTime: "",
+    CurrentSongIndex: 0,
+  });
+  const [queueError] = useState<unknown>(null);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [currentSongFile, setCurrentSongFile] = useState<ArrayBuffer | null>(null);
+  const [currentSongFileLoading, setCurrentSongFileLoading] = useState(false);
+  const [currentSongFileError, setCurrentSongFileError] = useState<unknown>(null);
+  const [nextSongFile, setNextSongFile] = useState<ArrayBuffer | null>(null);
+  const [nextSongFileLoading, setNextSongFileLoading] = useState(false);
+  const [nextSongFileError, setNextSongFileError] = useState<unknown>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [isAudioContextReady, setIsAudioContextReady] = useState(false);
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
+  const [isQueueLoading] = useState(false);
   const [isUserInteracted, setIsUserInteracted] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isVisualizerEnabled, setIsVisualizerEnabled] = useState(false);
-  const [currentVisualizerPreset, setCurrentVisualizerPreset] = useState("");
-
+  const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(0.5);
   // Refs
   const audioContextRef = useRef<AudioContext | null>(null);
-  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
-  const startTimeRef = useRef<number>(0);
+  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const syncIntervalRef = useRef<number | null>(null);
-  const isStartingPlaybackRef = useRef<boolean>(false);
 
-  const [queueInfo, setQueueInfo] = useState<QueueInfo | null>(null);
-  const [currentSongFile, setCurrentSongFile] = useState<ArrayBuffer | null>(
-    null
-  );
-
-  const queryClient = useQueryClient();
-
-  // Fetch queue information
-  const {
-    error: queueError,
-    isLoading: isQueueLoading,
-    refetch: refetchQueue,
-  } = useQuery<QueueInfo>({
-    queryKey: ["queue"],
-    queryFn: async () => {
-      const response = await api.get("/queue");
-      const data = response.data;
-
-      setQueueInfo(data);
-      return {
-        Queue: data.Queue ?? [],
-        Playlist: data.Playlist ?? null,
-        Remaining: data.Remaining ?? 0,
-        StartTime: data.StartTime ?? "",
-        CurrentSongIndex: data.CurrentSongIndex ?? 0,
-      };
-    },
-    refetchOnWindowFocus: false,
-    refetchInterval: 5000, // Refetch every 5 seconds to stay in sync
-  });
-
-  // Load current song file
-  const currentSong = getCurrentSong(queueInfo);
-  const { isLoading: isCurrentSongFileLoading } = useQuery({
-    queryKey: ["currentSongFile", currentSong?.youtube_id],
-    queryFn: async () => {
-      if (!currentSong?.youtube_id) return null;
-
-      const response = await fetch(
-        `/api/v1/playlists/${currentSong.youtube_id}/file`
-      );
-      const arrayBuffer = await response.arrayBuffer();
-      setCurrentSongFile(arrayBuffer);
-      return arrayBuffer;
-    },
-    enabled: !!currentSong?.youtube_id,
-    staleTime: 0, // Always consider data stale to prevent caching issues
-    gcTime: 0, // Don't cache to prevent detached buffer issues
-    refetchOnMount: true,
-    refetchOnWindowFocus: false,
-  });
-
-  // Initialize audio context on user interaction
   const initAudioContext = useCallback(() => {
     if (!audioContextRef.current) {
       try {
@@ -186,167 +127,142 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
     }
   }, [isMuted, volume]);
 
-  // Calculate elapsed time based on server start time
-  const calculateElapsedTime = useCallback(() => {
-    if (!queueInfo?.StartTime) return 0;
+  const startPlayback = useCallback(async (audioBuf: ArrayBuffer, elapsed: number) => {
+    if (!audioContextRef.current || !gainNodeRef.current) return;
+    const arrayBufferCopy = audioBuf.slice(0);
+    const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBufferCopy);
+    sourceNodeRef.current = audioContextRef.current.createBufferSource();
+    sourceNodeRef.current.buffer = audioBuffer;
+    sourceNodeRef.current.connect(gainNodeRef.current);
+    sourceNodeRef.current.start(0, elapsed);
+    setIsPlaying(true);
+    setIsAudioLoading(false);
+  }, [audioContextRef, gainNodeRef, sourceNodeRef]);
 
-    const now = new Date();
-    const startTime = new Date(queueInfo.StartTime);
-    const elapsed = (now.getTime() - startTime.getTime()) / 1000;
-
-    // If song has duration, cap elapsed time
-    const currentSong = getCurrentSong(queueInfo);
-    if (currentSong?.duration) {
-      return Math.min(elapsed, currentSong.duration);
+  const fetchQueue = async () => {
+    try {
+      setQueueLoading(true);
+      const response = await api.get("/queue");
+      setQueueInfo(response.data);
+      return response.data as QueueInfo;
+    } catch (error) {
+      toast.error("Failed to fetch queue");
+    } finally {
+      setQueueLoading(false);
     }
+  };
 
-    return Math.max(0, elapsed);
-  }, [queueInfo?.StartTime, queueInfo?.Queue, queueInfo?.CurrentSongIndex]);
+  const fetchSongFile = async (youtubeId: string) => {
+    try {
+      const response = await fetch(`/api/v1/playlists/${youtubeId}/file`);
+      const arrayBuffer = await response.arrayBuffer();
 
-  // Handle song changes from WebSocket
-  const handleSongChange = useCallback(
-    async (payload: SongChangeEvent) => {
-      console.log("🎵 Received song change event:", payload);
-
-      // Stop current playback immediately
-      if (sourceNodeRef.current) {
-        try {
-          sourceNodeRef.current.stop();
-          sourceNodeRef.current.disconnect();
-          sourceNodeRef.current = null;
-        } catch (error) {
-          console.error("Error stopping current playback:", error);
-        }
-      }
-
-      // Reset playback state and flags
-      setIsPlaying(false);
-      setElapsed(0);
-      isStartingPlaybackRef.current = false;
-
-      // Update queue info
-      setQueueInfo(payload);
-
-      // Invalidate queries to refetch data
-      queryClient.invalidateQueries({ queryKey: ["queue"] });
-      queryClient.invalidateQueries({ queryKey: ["currentSongFile"] });
-
-      // Refetch queue to get updated information
-      await refetchQueue();
-    },
-    [queryClient, refetchQueue]
-  );
-
-  // Start playback synchronized with server
-  const startPlayback = useCallback(async () => {
-    if (!audioContextRef.current || !gainNodeRef.current || !currentSongFile) {
-      console.log("Cannot start playback - missing audio context or song file");
-      return;
+      return arrayBuffer;
+    } catch (error) {
+      toast.error("Failed to fetch song file");
+      return null;
     }
+  }
 
-    // Prevent concurrent playback attempts
-    if (isStartingPlaybackRef.current) {
-      console.log("Playback already starting, skipping...");
-      return;
-    }
+  const handleSongChange = useCallback(async (payload: any) => {
+    console.log("handleSongChange", payload);
 
     try {
-      isStartingPlaybackRef.current = true;
-      setIsAudioLoading(true);
+      if (!audioContextRef.current || !gainNodeRef.current) return;
 
-      // Stop any existing playback first
+      console.log("changing song", payload.current_song_index)
+
+      let toPlay: ArrayBuffer | null = null;
+
+      if (!nextSongFile) {
+        toPlay = await fetchSongFile(payload.queue[payload.current_song_index].youtube_id);
+      } else {
+        toPlay = nextSongFile;
+      }
+
+      console.log("toPlay", toPlay);
+
       if (sourceNodeRef.current) {
-        try {
-          sourceNodeRef.current.stop();
-          sourceNodeRef.current.disconnect();
-          sourceNodeRef.current = null;
-        } catch (error) {
-          console.error("Error stopping existing playback:", error);
-        }
+        sourceNodeRef.current.stop();
+        sourceNodeRef.current.disconnect();
+        sourceNodeRef.current = null;
       }
 
-      // Create a copy of the ArrayBuffer to avoid detached buffer issues
-      const audioBufferCopy = currentSongFile.slice(0);
+      console.log("starting playback")
+      startPlayback(toPlay as ArrayBuffer, 0);
+      setCurrentSongFile(toPlay as ArrayBuffer);
+      setCurrentSongFileLoading(false);
+      setCurrentSongFileError(null);
 
-      // Decode audio data
-      const audioBuffer = await audioContextRef.current.decodeAudioData(
-        audioBufferCopy
-      );
+      console.log("setting next song file")
+      if (
+        payload.current_song_index + 1 < payload.queue.length
+      ) {
+        const nextNextSongFile = await fetchSongFile(payload.queue[payload.current_song_index + 1].youtube_id);
+        setNextSongFile(nextNextSongFile);
+        setNextSongFileLoading(false);
+        setNextSongFileError(null);
+      } else {
+        setNextSongFile(null);
+        setNextSongFileLoading(false);
+        setNextSongFileError(null);
+      }
 
-      // Calculate start position based on server time
-      const startPosition = calculateElapsedTime();
-
-      // Create new source node
-      sourceNodeRef.current = audioContextRef.current.createBufferSource();
-      sourceNodeRef.current.buffer = audioBuffer;
-      sourceNodeRef.current.connect(gainNodeRef.current);
-
-      // Start playback from calculated position
-      sourceNodeRef.current.start(0, startPosition);
-      startTimeRef.current =
-        audioContextRef.current.currentTime - startPosition;
-
-      setIsPlaying(true);
-      setElapsed(startPosition);
-
-      console.log(`Started playback at position: ${startPosition}s`);
-    } catch (error) {
-      console.error("Failed to start playback:", error);
-      toast.error("Failed to start playback");
-    } finally {
-      setIsAudioLoading(false);
-      isStartingPlaybackRef.current = false;
+      setQueueInfo({
+        Queue: payload.queue,
+        Playlist: payload.playlist,
+        Remaining: payload.remaining,
+        StartTime: payload.start_time,
+        CurrentSongIndex: payload.current_song_index,
+      });
+    } catch (error) { 
+      console.error("Error changing song:", error);
+      toast.error("Failed to change song");
     }
-  }, [currentSongFile, calculateElapsedTime]);
+  }, []);
 
-  // Seek to position
-  const seekTo = useCallback(
-    (position: number) => {
-      const newPosition = Math.max(0, position);
-      setElapsed(newPosition);
 
-      if (isPlaying) {
-        // Restart playback at new position
-        startPlayback();
+  const handleUserInteraction = useCallback(() => {
+    setIsUserInteracted(true);  
+    initAudioContext();
+  }, [])
+
+  useEffect(() => {
+    document.addEventListener("click", handleUserInteraction);
+    document.addEventListener("touchstart", handleUserInteraction);
+    return () => {
+      document.removeEventListener("click", handleUserInteraction);
+      document.removeEventListener("touchstart", handleUserInteraction);
+    }
+  }, [handleUserInteraction])
+
+  useEffect(() => {
+    const handleMount = async () => {
+      try {
+        console.log("fetching queue")
+
+        const queueRes = await fetchQueue();
+
+        if (!queueRes) return;
+
+        const songFileRes = await fetchSongFile(queueRes.Queue[queueRes.CurrentSongIndex].youtube_id);
+        setCurrentSongFile(songFileRes)
+        setCurrentSongFileLoading(false);
+        setCurrentSongFileError(null);
+
+        const nextSongFileRes = await fetchSongFile(queueRes.Queue[queueRes.CurrentSongIndex + 1].youtube_id);
+        setNextSongFile(nextSongFileRes);
+        setNextSongFileLoading(false);
+        setNextSongFileError(null);
+      } catch (error) {
+        console.error("Error fetching queue:", error);
+        toast.error("Failed to fetch queue");
       }
-    },
-    [isPlaying, startPlayback]
-  );
+    };
 
-  // Handle skip events from WebSocket
-  const handleSkipEvent = useCallback(
-    async (payload: any) => {
-      console.log("⏭️ Received skip event:", payload);
-      
-      // Skip will trigger song change events, so we don't need special handling
-      // The song change event will handle stopping current playback and starting new one
-    },
-    []
-  );
+    handleMount();
+  }, [audioContextRef, gainNodeRef]);
 
-  // Handle previous events from WebSocket
-  const handlePreviousEvent = useCallback(
-    async (payload: any) => {
-      console.log("⏮️ Received previous event:", payload);
-      
-      // Previous will trigger song change events, so we don't need special handling
-      // The song change event will handle stopping current playback and starting new one
-    },
-    []
-  );
-
-  // Handle playlist change events from WebSocket
-  const handlePlaylistChangeEvent = useCallback(
-    async (payload: any) => {
-      console.log("🎵 Received playlist change event:", payload);
-      
-      // Handle playlist change - this will trigger a song change event too
-      handleSongChange(payload);
-    },
-    [handleSongChange]
-  );
-
-  // WebSocket connection
   useEffect(() => {
     const connectWebSocket = () => {
       console.log("Connecting to radio server at:", wsUrl);
@@ -365,15 +281,6 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
           switch (data.type) {
             case "song_change":
               handleSongChange(data.payload);
-              break;
-            case "skip":
-              handleSkipEvent(data.payload);
-              break;
-            case "previous":
-              handlePreviousEvent(data.payload);
-              break;
-            case "playlist_change":
-              handlePlaylistChangeEvent(data.payload);
               break;
             case "pong":
               console.log("🏓 Received pong from server");
@@ -409,212 +316,52 @@ export const RadioProvider: React.FC<RadioProviderProps> = ({
     };
   }, [wsUrl, handleSongChange]);
 
-  // Sync elapsed time with server
-  useEffect(() => {
-    if (isPlaying && queueInfo?.StartTime) {
-      syncIntervalRef.current = setInterval(() => {
-        const serverElapsed = calculateElapsedTime();
-        setElapsed(serverElapsed);
-      }, 100); // Update every 100ms for smooth progress
-    } else {
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
-        syncIntervalRef.current = null;
-      }
+  const calculateElapsedTime = (startTime: string, duration?: number) => {
+    const now = new Date();
+    const startTimeDate = new Date(startTime);
+    const elapsed = (now.getTime() - startTimeDate.getTime()) / 1000;
+    if (duration) {
+      return Math.min(elapsed, duration);
     }
+    return Math.max(0, elapsed);
+  }
 
-    return () => {
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
-        syncIntervalRef.current = null;
-      }
-    };
-  }, [isPlaying, queueInfo?.StartTime, calculateElapsedTime]);
-
-  // Auto-start playback when new song file is loaded (after song change)
-  useEffect(() => {
-    if (
-      currentSongFile &&
-      isAudioContextReady &&
-      !isPlaying &&
-      !isStartingPlaybackRef.current
-    ) {
-      console.log("🎵 Auto-starting playback for new song file");
-      // Use setTimeout to ensure state updates have settled
-      const timer = setTimeout(() => {
-        startPlayback();
-      }, 100);
-
-      return () => clearTimeout(timer);
-    }
-  }, [
-    currentSongFile,
-    isAudioContextReady,
-    isPlaying,
-    startPlayback,
-  ]);
-
-  // Handle volume changes
-  useEffect(() => {
-    if (gainNodeRef.current && audioContextRef.current) {
-      const targetVolume = isMuted ? 0 : volume;
-      gainNodeRef.current.gain.setTargetAtTime(
-        targetVolume,
-        audioContextRef.current.currentTime,
-        0.1
-      );
-    }
-  }, [volume, isMuted]);
-
-  // Show error toast if queue query fails
-  useEffect(() => {
-    if (queueError) {
-      toast.error("Failed to fetch queue information");
-    }
-  }, [queueError]);
-
-  // Cleanup function
-  const cleanup = useCallback(() => {
-    if (sourceNodeRef.current) {
-      try {
-        sourceNodeRef.current.stop();
-        sourceNodeRef.current.disconnect();
-        sourceNodeRef.current = null;
-      } catch (error) {
-        console.error("Error stopping source node:", error);
-      }
-    }
-
-    if (gainNodeRef.current) {
-      try {
-        gainNodeRef.current.disconnect();
-        gainNodeRef.current = null;
-      } catch (error) {
-        console.error("Error disconnecting gain node:", error);
-      }
-    }
-
-    if (audioContextRef.current) {
-      try {
-        audioContextRef.current.close();
-        audioContextRef.current = null;
-      } catch (error) {
-        console.error("Error closing AudioContext:", error);
-      }
-    }
-
-    if (wsRef.current) {
-      try {
-        wsRef.current.close();
-        wsRef.current = null;
-      } catch (error) {
-        console.error("Error closing WebSocket:", error);
-      }
-    }
-
-    if (syncIntervalRef.current) {
-      clearInterval(syncIntervalRef.current);
-      syncIntervalRef.current = null;
-    }
-
-    // Reset flags
-    isStartingPlaybackRef.current = false;
-
-    // Reset state
-    setIsAudioContextReady(false);
-    setIsWebSocketConnected(false);
-    setIsAudioLoading(false);
-    setIsPlaying(false);
-    setElapsed(0);
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      cleanup();
-    };
-  }, [cleanup]);
-
-  // Computed property for readiness
-  const isReady =
-    isUserInteracted &&
-    !isQueueLoading &&
-    !isCurrentSongFileLoading &&
-    isWebSocketConnected &&
-    isAudioContextReady;
+  const getCurrentSong = () => {
+    if (!queueInfo.Queue || queueInfo.Queue.length === 0) return null;
+    return queueInfo.Queue[queueInfo.CurrentSongIndex];
+  }
 
   const value: RadioContextType = {
-    // State
-    elapsed,
-    volume,
-    isMuted,
+    queueInfo,
+    queueError,
+    queueLoading,
+    currentSongFile,
+    currentSongFileLoading,
+    currentSongFileError,
+    nextSongFile,
+    nextSongFileLoading,
+    nextSongFileError,
+    isPlaying,
     isAudioLoading,
     isAudioContextReady,
     isWebSocketConnected,
     isQueueLoading,
-    isCurrentSongFileLoading,
     isUserInteracted,
-    isPlaying,
-    isVisualizerEnabled,
-    currentVisualizerPreset,
-
-    // Actions
-    setElapsed,
+    isMuted,
+    volume,
+    audioContextRef,
+    gainNodeRef,
+    isReady: isAudioContextReady && isWebSocketConnected,
     setVolume,
     setIsMuted,
     setIsUserInteracted,
-    setIsVisualizerEnabled,
-    setCurrentVisualizerPreset,
-
-    // Data
-    queueInfo,
-    queueError,
-    currentSongFile,
-
-    // Functions
-    startPlayback,
-    seekTo,
     initAudioContext,
-    cleanup,
-    refetchQueue,
-
-    // Computed
-    isReady,
-
-    // Audio refs for visualizer
-    audioContextRef,
-    gainNodeRef,
-  };
+    startPlayback,
+    getCurrentSong,
+    calculateElapsedTime,
+  }
 
   return (
     <RadioContext.Provider value={value}>{children}</RadioContext.Provider>
   );
 };
-
-interface SongChangeEvent {
-  Queue: Song[];
-  Playlist: {
-    id: number;
-    name: string;
-    description: string;
-  } | null;
-  Remaining: number;
-  StartTime: string;
-  CurrentSongIndex: number;
-}
-
-// Helper functions to derive current and next songs from queue and index
-const getCurrentSong = (queueInfo: QueueInfo | null): Song | null => {
-  if (!queueInfo || !queueInfo.Queue || queueInfo.Queue.length === 0) {
-    return null;
-  }
-  
-  const currentIndex = queueInfo.CurrentSongIndex;
-  if (currentIndex < 0 || currentIndex >= queueInfo.Queue.length) {
-    return null;
-  }
-  
-  return queueInfo.Queue[currentIndex];
-};
-
-
