@@ -17,12 +17,12 @@ interface Playlist {
 }
 
 interface Song {
+  id: number;
   youtube_id: string;
   title: string;
-  artist: string;
-  album: string;
+  description: string;
   duration: number;
-  s3_key: string;
+  position: number;
 }
 
 interface QueueInfo {

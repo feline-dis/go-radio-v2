@@ -25,36 +25,36 @@ export const RadioInitButton = () => {
 
   // Show initialization button
   return (
-    <div className="max-w-md mx-auto p-8 bg-black border border-gray-800 shadow-2xl">
+    <div className="w-full max-w-md mx-auto p-4 sm:p-8 bg-black border border-gray-800 shadow-2xl">
       <div className="text-center">
-        <h2 className="text-xl font-mono font-bold text-white mb-6 tracking-wider">
+        <h2 className="text-lg sm:text-xl font-mono font-bold text-white mb-4 sm:mb-6 tracking-wider">
           GO_RADIO
         </h2>
 
         {isQueueLoading && (
-          <div className="mb-6">
-            <p className="text-gray-500 mb-3 font-mono text-sm">
+          <div className="mb-4 sm:mb-6">
+            <p className="text-gray-500 mb-3 font-mono text-xs sm:text-sm">
               [LOADING QUEUE DATA...]
             </p>
-            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-none animate-spin mx-auto"></div>
+            <div className="w-5 h-5 sm:w-6 sm:h-6 border-2 border-white border-t-transparent rounded-none animate-spin mx-auto"></div>
           </div>
         )}
 
         {!isWebSocketConnected && !isQueueLoading && (
-          <div className="mb-6">
-            <p className="text-gray-500 mb-3 font-mono text-sm">
+          <div className="mb-4 sm:mb-6">
+            <p className="text-gray-500 mb-3 font-mono text-xs sm:text-sm">
               [CONNECTING TO SERVER...]
             </p>
-            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-none animate-spin mx-auto"></div>
+            <div className="w-5 h-5 sm:w-6 sm:h-6 border-2 border-white border-t-transparent rounded-none animate-spin mx-auto"></div>
           </div>
         )}
 
         {!isQueueLoading && isWebSocketConnected && (
-          <div className="mb-8">
-            <p className="text-white mb-6 font-mono text-sm">[SYSTEM READY]</p>
+          <div className="mb-6 sm:mb-8">
+            <p className="text-white mb-4 sm:mb-6 font-mono text-sm">[SYSTEM READY]</p>
             <button
               onClick={handleEnterRadio}
-              className="px-8 py-3 bg-black border border-white hover:bg-white hover:text-black text-white font-mono transition-colors"
+              className="px-6 sm:px-8 py-2 sm:py-3 bg-black border border-white hover:bg-white hover:text-black text-white font-mono transition-colors text-sm sm:text-base"
             >
               [ENTER RADIO]
             </button>

@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useRadio } from "../contexts/RadioContext";
+import { useVisualizer } from "../contexts/VisualizerContext";
 
 export const VisualizerPerformance: React.FC = () => {
-  const { isVisualizerEnabled, isPlaying } = useRadio();
+  const { isVisualizerEnabled } = useVisualizer();
+  const { isPlaying } = useRadio();
   const [fps, setFps] = useState(0);
   const [frameCount, setFrameCount] = useState(0);
   const lastTimeRef = useRef<number>(0);

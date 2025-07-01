@@ -5,6 +5,7 @@ import React, {
   useState,
 } from "react";
 import { useRadio } from "../contexts/RadioContext";
+import { useVisualizer } from "../contexts/VisualizerContext";
 
 // Dynamic imports to handle ES module issues
 let Vissonance: any;
@@ -32,12 +33,6 @@ type Visualizer = {
   destroy(): void;
 };
 
-interface VissonanceVisualizerProps {
-  isEnabled: boolean;
-  currentPreset: string;
-  onPresetChange: (preset: string) => void;
-}
-
 // WebGL support detection
 const isWebGLSupported = (): boolean => {
   try {
@@ -49,17 +44,14 @@ const isWebGLSupported = (): boolean => {
   }
 };
 
-export const VissonanceVisualizer: React.FC<VissonanceVisualizerProps> = ({
-  isEnabled,
-  currentPreset,
-  onPresetChange,
-}) => {
+export const VissonanceVisualizer: React.FC = () => {
+  const { audioContextRef, gainNodeRef } = useRadio();
+  const { isVisualizerEnabled, currentPreset, setCurrentPreset } = useVisualizer();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const visualizerRef = useRef<Visualizer | null>(null);
   const isInitializedRef = useRef<boolean>(false);
   const resizeTimeoutRef = useRef<number | null>(null);
   const [webGLError, setWebGLError] = useState<string | null>(null);
-  const { audioContextRef, gainNodeRef } = useRadio();
 
   // Initialize visualizer
   const initVisualizer = useCallback(async () => {
@@ -116,7 +108,7 @@ export const VissonanceVisualizer: React.FC<VissonanceVisualizerProps> = ({
           console.log("visualizerRef.current:", visualizer);
           visualizer.loadPreset(preset, 0.0);
           if (!currentPreset) {
-            onPresetChange(presetName);
+            setCurrentPreset(presetName);
           }
         }
       }
@@ -132,7 +124,7 @@ export const VissonanceVisualizer: React.FC<VissonanceVisualizerProps> = ({
     audioContextRef,
     gainNodeRef,
     currentPreset,
-    onPresetChange
+    setCurrentPreset
   ]);
 
   // Handle preset change
@@ -151,13 +143,13 @@ export const VissonanceVisualizer: React.FC<VissonanceVisualizerProps> = ({
         }
 
         visualizerRef.current.loadPreset(presets[presetName], 0.0);
-        onPresetChange(presetName);
+        setCurrentPreset(presetName);
         console.log("Loaded preset:", presetName);
       } catch (error) {
         console.error("Failed to load preset:", error);
       }
     },
-    [onPresetChange]
+    [setCurrentPreset]
   );
 
   // Debounced resize handler
@@ -186,7 +178,7 @@ export const VissonanceVisualizer: React.FC<VissonanceVisualizerProps> = ({
   useEffect(() => {
     const initialize = async () => {
       if (
-        isEnabled &&
+        isVisualizerEnabled &&
         audioContextRef.current &&
         gainNodeRef.current &&
         !isInitializedRef.current
@@ -196,7 +188,7 @@ export const VissonanceVisualizer: React.FC<VissonanceVisualizerProps> = ({
     };
     
     initialize();
-  }, [isEnabled, audioContextRef, gainNodeRef, initVisualizer]);
+  }, [isVisualizerEnabled, audioContextRef, gainNodeRef, initVisualizer]);
 
   // Handle preset changes
   useEffect(() => {
@@ -240,7 +232,7 @@ export const VissonanceVisualizer: React.FC<VissonanceVisualizerProps> = ({
     };
   }, []);
 
-  if (!isEnabled) {
+  if (!isVisualizerEnabled) {
     return null;
   }
 
@@ -270,11 +262,8 @@ export const VissonanceVisualizer: React.FC<VissonanceVisualizerProps> = ({
 };
 
 // Optimized preset selector component
-export const VissonancePresetSelector: React.FC<{
-  currentPreset: string;
-  onPresetChange: (preset: string) => void;
-  isEnabled: boolean;
-}> = ({ currentPreset, onPresetChange, isEnabled }) => {
+export const VissonancePresetSelector: React.FC = () => {
+  const { isVisualizerEnabled, currentPreset, setCurrentPreset } = useVisualizer();
   const [presetNames, setPresetNames] = useState<string[]>([]);
 
   useEffect(() => {
@@ -290,24 +279,24 @@ export const VissonancePresetSelector: React.FC<{
       }
     };
 
-    if (isEnabled) {
+    if (isVisualizerEnabled) {
       loadPresets();
     }
-  }, [isEnabled]);
+  }, [isVisualizerEnabled]);
 
-  if (!isEnabled) {
+  if (!isVisualizerEnabled) {
     return null;
   }
 
   return (
-    <div className="fixed top-4 right-4 z-50 bg-black bg-opacity-80 border border-gray-700 p-3 rounded-sm">
-      <div className="text-xs text-gray-400 font-mono mb-2">
+    <div className="fixed top-20 right-4 z-50 bg-black bg-opacity-80 border border-gray-700 p-2 sm:p-3 rounded-sm">
+      <div className="text-xs text-gray-400 font-mono mb-1 sm:mb-2 hidden sm:block">
         [VISSONANCE PRESET]
       </div>
       <select
         value={currentPreset}
-        onChange={(e) => onPresetChange(e.target.value)}
-        className="bg-black border border-gray-600 text-white text-xs font-mono px-2 py-1 focus:outline-none focus:border-white"
+        onChange={(e) => setCurrentPreset(e.target.value)}
+        className="bg-black border border-gray-600 text-white text-xs font-mono px-1 sm:px-2 py-1 focus:outline-none focus:border-white w-full sm:w-auto"
       >
         {presetNames.map((presetName) => (
           <option key={presetName} value={presetName}>
