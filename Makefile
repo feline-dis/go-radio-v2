@@ -1,21 +1,36 @@
-.PHONY: build run test clean docker-build docker-push deploy
+.PHONY: build run test clean setup config docker-build docker-push deploy
 
 # Build variables
-BINARY_NAME=go-radio
+BINARY_NAME=go-radio-server
+SETUP_BINARY=go-radio-setup
 DOCKER_IMAGE=feline-dis/go-radio
 VERSION=$(shell git describe --tags --always --dirty)
 
 # Go related variables
 GOBASE=$(shell pwd)
 GOBIN=$(GOBASE)/bin
-GOFILES=$(wildcard cmd/server/*.go internal/**/*.go)
+GOFILES=$(wildcard cmd/**/*.go internal/**/*.go)
+
+# Setup and build
+setup:
+	@./scripts/setup.sh
+
+config:
+	@./scripts/setup.sh config
 
 build:
-	@echo "Building..."
+	@echo "Building server..."
+	@mkdir -p $(GOBIN)
 	@go build -o $(GOBIN)/$(BINARY_NAME) cmd/server/main.go
+	@echo "Building setup tool..."
+	@go build -o $(GOBIN)/$(SETUP_BINARY) cmd/setup/main.go
+
+build-frontend:
+	@echo "Building frontend..."
+	@cd client && yarn build
 
 run: build
-	@echo "Running..."
+	@echo "Running server..."
 	@./bin/$(BINARY_NAME)
 
 test:
@@ -30,16 +45,19 @@ test-coverage:
 clean:
 	@echo "Cleaning..."
 	@rm -f $(GOBIN)/$(BINARY_NAME)
+	@rm -f $(GOBIN)/$(SETUP_BINARY)
 	@rm -f coverage.out
+	@cd client && rm -rf dist
 
-migrate:
-	@echo "Running migrations..."
-	@atlas migrate diff --dir file://migrations  --to file://schema.hcl --env local
+# Development commands
+dev-deps:
+	@echo "Installing development dependencies..."
+	@go mod download
+	@cd client && yarn install
 
-migrate-up:
-	@echo "Applying migrations..."
-	@atlas migrate apply --dir file://migrations --env local
+dev: build
+	@echo "Starting development server..."
+	@./bin/$(BINARY_NAME)
 
-migrate-down:
-	@echo "Rolling back migrations..."
-	@atlas migrate down --dir file://migrations --env local
+# Quick start - full setup and run
+start: setup run

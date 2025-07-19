@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/feline-dis/go-radio-v2/internal/models"
-	"github.com/feline-dis/go-radio-v2/internal/repositories"
+	"github.com/feline-dis/go-radio-v2/internal/storage"
 )
 
 type PlaylistService struct {
-	playlistRepo *repositories.PlaylistRepository
-	songRepo     *repositories.SongRepository
+	playlistRepo storage.PlaylistRepository
+	songRepo     storage.SongRepository
 	youtubeSvc   *YouTubeService
 }
 
@@ -33,8 +33,8 @@ type batchJob struct {
 }
 
 func NewPlaylistService(
-	playlistRepo *repositories.PlaylistRepository,
-	songRepo *repositories.SongRepository,
+	playlistRepo storage.PlaylistRepository,
+	songRepo storage.SongRepository,
 	youtubeSvc *YouTubeService,
 ) *PlaylistService {
 	return &PlaylistService{
@@ -271,7 +271,7 @@ func (s *PlaylistService) processBatch(songIDs []string, startIndex int) []songP
 				Artist:    "Unknown", // We could try to extract this from title/description
 				Album:     "Unknown",
 				Duration:  int(duration.Seconds()),
-				S3Key:     fmt.Sprintf("songs/%s.mp3", item.ID), // Assuming this is the format
+				FilePath:  fmt.Sprintf("songs/%s.mp3", item.ID), // Using FilePath instead of S3Key
 			}
 
 			// Check if song already exists

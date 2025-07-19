@@ -2,82 +2,55 @@ package main
 
 import (
 	"context"
-	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
-	_ "github.com/lib/pq"
 
 	"github.com/feline-dis/go-radio-v2/internal/config"
 	"github.com/feline-dis/go-radio-v2/internal/controllers"
 	"github.com/feline-dis/go-radio-v2/internal/events"
 	"github.com/feline-dis/go-radio-v2/internal/middleware"
-	"github.com/feline-dis/go-radio-v2/internal/repositories"
 	"github.com/feline-dis/go-radio-v2/internal/services"
+	"github.com/feline-dis/go-radio-v2/internal/storage"
 	"github.com/feline-dis/go-radio-v2/internal/websocket"
 )
-
-func runMigrations() error {
-	// Check if atlas is installed
-	if _, err := exec.LookPath("atlas"); err != nil {
-		log.Printf("Warning: Atlas not found in PATH. Skipping migrations.")
-		return nil
-	}
-
-	// Run atlas migrate apply
-	cmd := exec.Command("atlas", "migrate", "apply", "--env", "local")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
 
 func main() {
 	cfg := config.Load()
 
 	fmt.Println("Config:", cfg)
 
-	// Run database migrations
-	if err := runMigrations(); err != nil {
-		log.Fatalf("Failed to run database migrations: %v", err)
+	// Initialize storage factory
+	storageFactory := storage.NewStorageFactory(cfg)
+
+	// Validate storage configuration
+	if err := storageFactory.ValidateConfig(); err != nil {
+		log.Fatalf("Invalid storage configuration: %v", err)
 	}
 
-	// Open PostgreSQL database
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Database.Host, cfg.Database.Port, cfg.Database.User,
-		cfg.Database.Password, cfg.Database.DBName, cfg.Database.SSLMode)
-	db, err := sql.Open("postgres", dsn)
+	// Initialize repositories using storage factory
+	songRepo, err := storageFactory.CreateSongRepository()
 	if err != nil {
-		log.Fatalf("Failed to open database: %v", err)
-	}
-	defer db.Close()
-
-	// Configure connection pool
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(time.Hour)
-	db.SetConnMaxIdleTime(time.Minute * 5)
-
-	// Test the connection
-	if err := db.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
+		log.Fatalf("Failed to initialize song repository: %v", err)
 	}
 
-	// Initialize repositories
-	songRepo := repositories.NewSongRepository(db)
-	playlistRepo := repositories.NewPlaylistRepository(db)
-
-	// Initialize S3 service
-	s3Service, err := services.NewS3Service(cfg)
+	playlistRepo, err := storageFactory.CreatePlaylistRepository()
 	if err != nil {
-		log.Fatalf("Failed to initialize S3 service: %v", err)
+		log.Fatalf("Failed to initialize playlist repository: %v", err)
+	}
+
+	// Initialize file storage
+	fileStorage, err := storageFactory.CreateFileStorage()
+	if err != nil {
+		log.Fatalf("Failed to initialize file storage: %v", err)
 	}
 
 	// Initialize YouTube service
@@ -86,12 +59,25 @@ func main() {
 		log.Fatalf("Failed to initialize YouTube service: %v", err)
 	}
 
+	// Initialize yt-dlp service
+	var ytdlpService services.YtDlpServiceInterface
+	realService, err := services.NewYtDlpService()
+	if err != nil {
+		log.Printf("Warning: Failed to initialize yt-dlp service (yt-dlp not available): %v", err)
+		log.Printf("Songs will not be automatically downloaded. Please install yt-dlp or add songs manually.")
+		// Use mock service for testing/development without yt-dlp
+		ytdlpService = services.NewMockYtDlpService(1*time.Second, false)
+	} else {
+		ytdlpService = realService
+	}
+
 	// Initialize event bus
 	eventBus := events.NewEventBus()
 
+
 	// Initialize services
 	playlistService := services.NewPlaylistService(playlistRepo, songRepo, youtubeService)
-	radioService := services.NewRadioService(songRepo, playlistRepo, s3Service, eventBus)
+	radioService := services.NewRadioService(songRepo, playlistRepo, fileStorage, eventBus, ytdlpService, cfg.Storage.LocalDataDir)
 
 	// Initialize WebSocket handler with radio service and event bus
 	wsHandler := websocket.NewHandler(radioService, eventBus)
@@ -104,7 +90,7 @@ func main() {
 	// Initialize controllers
 	radioController := controllers.NewRadioController(radioService)
 	youtubeController := controllers.NewYouTubeController(youtubeService)
-	playlistController := controllers.NewPlaylistController(playlistService, s3Service)
+	playlistController := controllers.NewPlaylistController(playlistService, fileStorage)
 	reactionController := controllers.NewReactionController(eventBus)
 	authController := controllers.NewAuthController(jwtService, cfg)
 
@@ -143,25 +129,43 @@ func main() {
 	
 	// Register reaction routes
 	apiRouter.HandleFunc("/api/v1/reactions", reactionController.SendReaction).Methods("POST")
+	
+	// Add server info endpoint
+	apiRouter.HandleFunc("/api/v1/server-info", func(w http.ResponseWriter, r *http.Request) {
+		info := map[string]interface{}{
+			"server_port": cfg.Server.Port,
+			"local_url": fmt.Sprintf("http://localhost:%s", cfg.Server.Port),
+		}
+		
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(info)
+	}).Methods("GET")
 
 	// Admin routes with JWT authentication middleware
 	adminRouter := apiRouter.PathPrefix("/api/v1/admin").Subrouter()
 	adminRouter.Use(middleware.AuthMiddleware(jwtService))
 
 	// Serve static files for the frontend
-	fs := http.FileServer(http.Dir("/app/static"))
+	// Check for local development (client/dist) first, then Docker path
+	staticDir := "./client/dist"
+	if _, err := os.Stat(staticDir); os.IsNotExist(err) {
+		staticDir = "/app/static" // Docker production path
+	}
+	
+	fs := http.FileServer(http.Dir(staticDir))
 	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", fs))
 	router.PathPrefix("/assets/").Handler(fs)
 	router.PathPrefix("/favicon.ico").Handler(fs)
 	router.PathPrefix("/manifest.json").Handler(fs)
 
 	// Check if static directory exists and log its contents
-	if _, err := os.Stat("/app/static"); os.IsNotExist(err) {
-		log.Printf("Warning: Static directory /app/static does not exist")
+	if _, err := os.Stat(staticDir); os.IsNotExist(err) {
+		log.Printf("Warning: Static directory %s does not exist", staticDir)
+		log.Printf("Please build the frontend with: cd client && yarn build")
 	} else {
-		log.Printf("Static directory /app/static exists")
+		log.Printf("Static directory %s exists", staticDir)
 		// List contents of static directory
-		if entries, err := os.ReadDir("/app/static"); err == nil {
+		if entries, err := os.ReadDir(staticDir); err == nil {
 			log.Printf("Static directory contents:")
 			for _, entry := range entries {
 				log.Printf("  - %s", entry.Name())
@@ -180,7 +184,12 @@ func main() {
 		}
 		
 		// For all other routes, serve index.html to support client-side routing
-		http.ServeFile(w, r, "/app/static/index.html")
+		indexPath := staticDir + "/index.html"
+		if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+			http.Error(w, "Frontend not built. Please run: cd client && yarn build", http.StatusNotFound)
+			return
+		}
+		http.ServeFile(w, r, indexPath)
 	})
 
 	// Create server
@@ -207,11 +216,27 @@ func main() {
 
 	// Wait for server to be ready
 	<-serverReady
+	
+	// Display server status prominently
+	fmt.Println("\n" + strings.Repeat("=", 80))
+	fmt.Println("🎵 GO RADIO SERVER STARTED")
+	fmt.Println(strings.Repeat("=", 80))
+	fmt.Printf("🏠 Local URL:  http://localhost:%s\n", cfg.Server.Port)
+	fmt.Println("")
+	fmt.Println("🎧 Your radio is ready! Open the URL above in your browser.")
+	fmt.Println("💡 Tip: Use a tunnel service like ngrok for external access")
+	fmt.Println(strings.Repeat("=", 80) + "\n")
+	
 	log.Println("Server is ready to accept connections")
 
 	// Start the playback loop
 	if err := radioService.StartPlaybackLoop(); err != nil {
 		log.Printf("Error starting playback loop: %v", err)
+	} else {
+		// Show URL reminder after successful startup
+		fmt.Printf("\n🎵 Radio is now playing! Access URL:\n")
+		fmt.Printf("   🏠 Local:   http://localhost:%s\n", cfg.Server.Port)
+		fmt.Printf("   📡 Info:    http://localhost:%s/api/v1/server-info\n\n", cfg.Server.Port)
 	}
 
 	// Wait for interrupt signal
@@ -222,6 +247,7 @@ func main() {
 	// Create shutdown context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
 
 	// Attempt graceful shutdown
 	if err := server.Shutdown(ctx); err != nil {

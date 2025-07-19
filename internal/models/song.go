@@ -11,7 +11,8 @@ type Song struct {
 	Artist     string    `json:"artist" db:"artist"`
 	Album      string    `json:"album" db:"album"`
 	Duration   int       `json:"duration" db:"duration"` // Duration in seconds
-	S3Key      string    `json:"s3_key" db:"s3_key"`
+	FilePath   string    `json:"file_path" db:"file_path"` // Local file path or S3 key
+	S3Key      string    `json:"s3_key,omitempty" db:"s3_key"` // Legacy field, kept for compatibility
 	LastPlayed time.Time `json:"last_played" db:"last_played"`
 	PlayCount  int       `json:"play_count" db:"play_count"`
 	CreatedAt  time.Time `json:"created_at" db:"created_at"`

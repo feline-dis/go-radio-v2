@@ -14,7 +14,8 @@ type Config struct {
 	Server   ServerConfig
 	AWS      AWSConfig
 	JWT      JWTConfig
-	Database DatabaseConfig
+	Database DatabaseConfig // Legacy - will be removed
+	Storage  StorageConfig
 	Logging  LoggingConfig
 	Metrics  MetricsConfig
 	Admin    AdminConfig
@@ -66,6 +67,18 @@ type AdminConfig struct {
 type YouTubeConfig struct {
 	APIKey string
 }
+
+type StorageConfig struct {
+	// File storage options
+	FileStorageType string // "local" or "s3"
+	LocalDataDir    string // Directory for local storage
+	
+	// Metadata storage options  
+	MetadataStorageType string // "sqlite" or "json"
+	SQLiteDBPath        string // Path to SQLite database file
+	JSONDataDir         string // Directory for JSON metadata files
+}
+
 
 // Load attempts to load environment variables from .env file
 // and falls back to system environment variables if not found
@@ -128,6 +141,13 @@ func Load() *Config {
 		},
 		YouTube: YouTubeConfig{
 			APIKey: getEnv("YOUTUBE_API_KEY", ""),
+		},
+		Storage: StorageConfig{
+			FileStorageType:     getEnv("FILE_STORAGE_TYPE", "local"),
+			LocalDataDir:        getEnv("LOCAL_DATA_DIR", "./data"),
+			MetadataStorageType: getEnv("METADATA_STORAGE_TYPE", "sqlite"),
+			SQLiteDBPath:        getEnv("SQLITE_DB_PATH", "./data/radio.db"),
+			JSONDataDir:         getEnv("JSON_DATA_DIR", "./data"),
 		},
 	}
 }

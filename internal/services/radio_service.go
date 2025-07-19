@@ -6,6 +6,8 @@ import (
 	"io"
 	"log"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -28,10 +30,11 @@ type PlaylistRepositoryInterface interface {
 	GetByID(playlistID string) (*models.Playlist, error)
 }
 
-type S3ServiceInterface interface {
+type FileStorageInterface interface {
 	GetPresignedURL(ctx context.Context, key string, expires time.Duration) (string, error)
 	UploadFile(ctx context.Context, key string, body io.Reader) error
 	DeleteFile(ctx context.Context, key string) error
+	FileExists(ctx context.Context, key string) (bool, error)
 }
 
 type EventBusInterface interface {
@@ -46,18 +49,22 @@ type EventBusInterface interface {
 type RadioService struct {
 	songRepo     SongRepositoryInterface
 	playlistRepo PlaylistRepositoryInterface
-	s3Service    S3ServiceInterface
+	fileStorage  FileStorageInterface
 	eventBus     EventBusInterface
+	ytdlpService YtDlpServiceInterface
 	state        *models.PlaybackState
 	mu           sync.RWMutex
 	randMu       sync.Mutex // For thread-safe random number generation
+	dataDir      string     // Base directory for audio files
 }
 
 func NewRadioService(
 	songRepo SongRepositoryInterface,
 	playlistRepo PlaylistRepositoryInterface,
-	s3Service S3ServiceInterface,
+	fileStorage FileStorageInterface,
 	eventBus EventBusInterface,
+	ytdlpService YtDlpServiceInterface,
+	dataDir string,
 ) *RadioService {
 	// Initialize with a non-nil state
 	state := &models.PlaybackState{
@@ -66,9 +73,11 @@ func NewRadioService(
 	return &RadioService{
 		songRepo:     songRepo,
 		playlistRepo: playlistRepo,
-		s3Service:    s3Service,
+		fileStorage:  fileStorage,
 		eventBus:     eventBus,
+		ytdlpService: ytdlpService,
 		state:        state,
+		dataDir:      dataDir,
 	}
 }
 
@@ -304,6 +313,14 @@ func (s *RadioService) StartPlaybackLoop() error {
 	s.state = newState
 	s.mu.Unlock()
 
+	// Download the first song before starting playback
+	log.Printf("[DEBUG] StartPlaybackLoop: Ensuring first song is downloaded")
+	ctx := context.Background()
+	if err := s.checkAndDownloadCurrentSong(ctx); err != nil {
+		log.Printf("[ERROR] StartPlaybackLoop: Failed to download first song: %v", err)
+		return fmt.Errorf("failed to download first song: %w", err)
+	}
+
 	// Send initial song change notification
 	s.notifySongChange(songs[0], songs[1%len(songs)])
 
@@ -424,6 +441,14 @@ func (s *RadioService) playbackLoop(songs []*models.Song) {
 
 				s.mu.Unlock()
 
+				// Ensure the new current song is downloaded
+				if currentSong != nil {
+					ctx := context.Background()
+					if err := s.checkAndDownloadCurrentSong(ctx); err != nil {
+						log.Printf("[ERROR] playbackLoop: Failed to download restarted song %s: %v", currentSong.YouTubeID, err)
+					}
+				}
+
 				// Notify outside of lock
 				if s.eventBus != nil && currentSong != nil {
 					s.eventBus.PublishSongChange(currentSong, nextSong, queueInfo)
@@ -453,6 +478,14 @@ func (s *RadioService) playbackLoop(songs []*models.Song) {
 				}
 
 				s.mu.Unlock()
+
+				// Ensure the new current song is downloaded
+				if currentSong != nil {
+					ctx := context.Background()
+					if err := s.checkAndDownloadCurrentSong(ctx); err != nil {
+						log.Printf("[ERROR] playbackLoop: Failed to download next song %s: %v", currentSong.YouTubeID, err)
+					}
+				}
 
 				// Notify outside of lock
 				if s.eventBus != nil && currentSong != nil {
@@ -555,11 +588,100 @@ func (s *RadioService) SetActivePlaylist(playlistID string) error {
 
 	s.mu.Unlock()
 
+	// Ensure the new current song is downloaded
+	if currentSong != nil {
+		ctx := context.Background()
+		if err := s.checkAndDownloadCurrentSong(ctx); err != nil {
+			log.Printf("[ERROR] SetActivePlaylist: Failed to download first song %s: %v", currentSong.YouTubeID, err)
+			return fmt.Errorf("failed to download first song: %w", err)
+		}
+	}
+
 	// Broadcast playlist change event outside of lock
 	if s.eventBus != nil && currentSong != nil {
 		s.eventBus.PublishSongChange(currentSong, nextSong, queueInfo)
 	}
 
 	log.Printf("[DEBUG] SetActivePlaylist: Successfully switched to playlist %s", playlist.Name)
+	return nil
+}
+
+// ensureSongDownloaded checks if a song is downloaded and downloads it if necessary
+func (s *RadioService) ensureSongDownloaded(ctx context.Context, song *models.Song) error {
+	if song == nil {
+		return fmt.Errorf("song is nil")
+	}
+
+	// Get the full file path
+	audioDir := filepath.Join(s.dataDir, "audio", "songs")
+	fullPath := filepath.Join(audioDir, fmt.Sprintf("%s.mp3", song.YouTubeID))
+
+	// Check if file already exists
+	if _, err := os.Stat(fullPath); err == nil {
+		log.Printf("[DEBUG] ensureSongDownloaded: Song %s already downloaded at %s", song.YouTubeID, fullPath)
+		return nil
+	}
+
+	log.Printf("[INFO] ensureSongDownloaded: Downloading song %s (%s)", song.YouTubeID, song.Title)
+
+	// Download the audio
+	downloadedPath, err := s.ytdlpService.DownloadAudio(ctx, song.YouTubeID, audioDir)
+	if err != nil {
+		return fmt.Errorf("failed to download song %s: %w", song.YouTubeID, err)
+	}
+
+	log.Printf("[INFO] ensureSongDownloaded: Successfully downloaded %s to %s", song.YouTubeID, downloadedPath)
+	return nil
+}
+
+// predownloadNextSong downloads the next song in the background
+func (s *RadioService) predownloadNextSong(ctx context.Context) {
+	s.mu.RLock()
+	if s.state == nil || len(s.state.Queue) == 0 {
+		s.mu.RUnlock()
+		return
+	}
+
+	// Get next song index
+	nextIndex := (s.state.CurrentSongIndex + 1) % len(s.state.Queue)
+	if nextIndex >= len(s.state.Queue) {
+		s.mu.RUnlock()
+		return
+	}
+
+	nextSong := s.state.Queue[nextIndex]
+	s.mu.RUnlock()
+
+	if nextSong == nil {
+		return
+	}
+
+	// Download in background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		if err := s.ensureSongDownloaded(ctx, nextSong); err != nil {
+			log.Printf("[WARN] predownloadNextSong: Failed to predownload next song %s: %v", nextSong.YouTubeID, err)
+		} else {
+			log.Printf("[DEBUG] predownloadNextSong: Successfully predownloaded next song %s", nextSong.YouTubeID)
+		}
+	}()
+}
+
+// checkAndDownloadCurrentSong ensures the current song is downloaded before playback
+func (s *RadioService) checkAndDownloadCurrentSong(ctx context.Context) error {
+	currentSong := s.GetCurrentSong()
+	if currentSong == nil {
+		return fmt.Errorf("no current song")
+	}
+
+	if err := s.ensureSongDownloaded(ctx, currentSong); err != nil {
+		return fmt.Errorf("failed to ensure current song is downloaded: %w", err)
+	}
+
+	// Start predownloading the next song
+	s.predownloadNextSong(ctx)
+
 	return nil
 }

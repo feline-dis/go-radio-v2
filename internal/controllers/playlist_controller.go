@@ -6,18 +6,19 @@ import (
 	"net/http"
 
 	"github.com/feline-dis/go-radio-v2/internal/services"
+	"github.com/feline-dis/go-radio-v2/internal/storage"
 	"github.com/gorilla/mux"
 )
 
 type PlaylistController struct {
 	playlistSvc *services.PlaylistService
-	s3Svc       *services.S3Service
+	fileStorage storage.FileStorage
 }
 
-func NewPlaylistController(playlistSvc *services.PlaylistService, s3Svc *services.S3Service) *PlaylistController {
+func NewPlaylistController(playlistSvc *services.PlaylistService, fileStorage storage.FileStorage) *PlaylistController {
 	return &PlaylistController{
 		playlistSvc: playlistSvc,
-		s3Svc:       s3Svc,
+		fileStorage: fileStorage,
 	}
 }
 
@@ -27,7 +28,8 @@ func (c *PlaylistController) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/api/v1/playlists", c.CreatePlaylist).Methods("POST")
 	r.HandleFunc("/api/v1/playlists/{id}", c.GetPlaylist).Methods("GET")
 	r.HandleFunc("/api/v1/playlists/{id}/songs", c.GetPlaylistSongs).Methods("GET")
-	r.HandleFunc("/api/v1/playlists/{youtube_id}/file", c.GetSongFile).Methods("GET")
+	r.HandleFunc("/api/v1/songs/{youtube_id}/file", c.GetSongFile).Methods("GET")
+	r.HandleFunc("/api/v1/playlists/{youtube_id}/file", c.GetSongFile).Methods("GET") // Legacy endpoint for frontend compatibility
 
 	// Admin endpoints
 	admin := r.PathPrefix("/api/v1/admin/playlists").Subrouter()
@@ -198,7 +200,7 @@ func (c *PlaylistController) GetSongFile(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	exists, err := c.s3Svc.FileExists(r.Context(), "songs/"+youtubeID+".mp3")
+	exists, err := c.fileStorage.FileExists(r.Context(), "songs/"+youtubeID+".mp3")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -214,7 +216,7 @@ func (c *PlaylistController) GetSongFile(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Accept-Ranges", "bytes")
 	w.Header().Set("Cache-Control", "public, max-age=31536000")
 
-	file, err := c.s3Svc.GetFile(r.Context(), "songs/"+youtubeID+".mp3")
+	file, err := c.fileStorage.GetFile(r.Context(), "songs/"+youtubeID+".mp3")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
