@@ -4,7 +4,6 @@ import { useRadio } from "../contexts/RadioContext";
 import { useEffect, useRef, useState } from "react";
 import { VissonanceVisualizer, VissonancePresetSelector } from "./VissonanceVisualizer";
 import { VisualizerToggle } from "./VisualizerToggle";
-import { ReactionBar } from "./ReactionBar";
 
 interface Song {
   id: number;
@@ -37,26 +36,54 @@ const ProgressBar = ({
   currentSong: Song | null;
   queueInfo: QueueInfo | null;
 }) => {
-  const { calculateElapsedTime } = useRadio();
+  const { calculateElapsedTime, isPlaying } = useRadio();
   const [localElapsed, setLocalElapsed] = useState(0);
   const lastUpdateRef = useRef(Date.now());
   const rafRef = useRef<number | null>(null);
+  const currentSongIdRef = useRef<string>("");
 
-  // Calculate initial elapsed time
+  // Reset progress when song changes
   useEffect(() => {
-    if (queueInfo && currentSong) {
-      const elapsed = calculateElapsedTime(queueInfo.StartTime, currentSong.duration);
-      setLocalElapsed(elapsed);
+    if (currentSong && currentSong.youtube_id !== currentSongIdRef.current) {
+      const previousSongId = currentSongIdRef.current;
+      currentSongIdRef.current = currentSong.youtube_id;
+      
+      // If this is a song change (not initial load), start from 0
+      if (previousSongId && previousSongId !== currentSong.youtube_id) {
+        setLocalElapsed(0);
+        lastUpdateRef.current = Date.now();
+      } else if (!previousSongId && queueInfo?.StartTime) {
+        // Initial load - calculate correct elapsed time
+        const elapsed = calculateElapsedTime(queueInfo.StartTime, currentSong.duration);
+        setLocalElapsed(elapsed);
+        lastUpdateRef.current = Date.now();
+      } else {
+        // Fallback - start from 0
+        setLocalElapsed(0);
+        lastUpdateRef.current = Date.now();
+      }
     }
-  }, [queueInfo, currentSong]);
+  }, [currentSong, queueInfo?.StartTime, calculateElapsedTime]);
 
+  // Animation loop for progress updates
   useEffect(() => {
+    if (!isPlaying || !currentSong) {
+      return;
+    }
+
     const updateElapsed = () => {
       const now = Date.now();
-      if (now - lastUpdateRef.current > 100) {
+      const deltaTime = (now - lastUpdateRef.current) / 1000;
+      
+      if (deltaTime >= 0.1) { // Update every 100ms
         lastUpdateRef.current = now;
-        setLocalElapsed((prev) => prev + 0.1);
+        setLocalElapsed((prev) => {
+          const newElapsed = prev + deltaTime;
+          // Cap at song duration
+          return Math.min(newElapsed, currentSong.duration);
+        });
       }
+      
       rafRef.current = requestAnimationFrame(updateElapsed);
     };
 
@@ -67,9 +94,9 @@ const ProgressBar = ({
         cancelAnimationFrame(rafRef.current);
       }
     };
-  }, []);
+  }, [isPlaying, currentSong]);
 
-  const progress = (localElapsed / (currentSong?.duration || 0)) * 100;
+  const progress = Math.min((localElapsed / (currentSong?.duration || 1)) * 100, 100);
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -80,7 +107,7 @@ const ProgressBar = ({
     <div className="mb-2">
       <div className="relative h-1 bg-black border border-gray-700 rounded-none overflow-hidden">
         <div
-          className="absolute top-0 left-0 h-full bg-white transition-all duration-1000"
+          className="absolute top-0 left-0 h-full bg-white transition-all duration-100 ease-linear"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -94,44 +121,30 @@ const ProgressBar = ({
 
 export const RadioPlayer = () => {
   const {
-    currentSongFile,
     queueInfo,
     volume,
     isMuted,
     isAudioLoading,
     isAudioContextReady,
     isPlaying,
-    startPlayback,
     getCurrentSong,
-    calculateElapsedTime,
     handleVolumeChange,
     toggleMute,
     } = useRadio();
 
   const [isCompactMode, setIsCompactMode] = useState(false);
 
-
-
   const toggleCompactMode = () => {
     setIsCompactMode(!isCompactMode);
   };
 
   const currentSong = getCurrentSong();
-  
-  useEffect(() => {
-    if (currentSongFile) {
-      if (!currentSong) return;
-      const elapsed = calculateElapsedTime(queueInfo?.StartTime || new Date().toISOString(), currentSong.duration);
-      startPlayback(currentSongFile, elapsed);
-    }
-  }, [currentSongFile, startPlayback]);
 
   return (
     <>
       <VissonanceVisualizer />
       <VisualizerToggle />
       <VissonancePresetSelector />
-      <ReactionBar />
       <div className={`
         ${isCompactMode 
           ? 'fixed bottom-4 left-4 right-4 sm:bottom-6 sm:left-20 sm:right-20 z-50 bg-black border border-gray-800 shadow-2xl p-2 sm:p-3 rounded-sm' 

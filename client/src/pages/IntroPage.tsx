@@ -1,35 +1,40 @@
-import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useRadio } from "../contexts/RadioContext";
-import { RadioPlayer } from "./RadioPlayer";
 
-export const RadioInitButton = () => {
+export const IntroPage = () => {
+  const navigate = useNavigate();
   const {
-    isReady,
     isQueueLoading,
     isWebSocketConnected,
+    queueInfo,
     setIsUserInteracted,
     initAudioContext,
   } = useRadio();
-  const [showPlayer, setShowPlayer] = useState(false);
 
   const handleEnterRadio = () => {
     setIsUserInteracted(true);
     initAudioContext();
-    setShowPlayer(true);
+    navigate("/player");
   };
 
-  // Show the radio player if we're ready and user has clicked enter
-  if (showPlayer && isReady) {
-    return <RadioPlayer />;
-  }
+  const currentSong = queueInfo.Queue?.[queueInfo.CurrentSongIndex];
 
-  // Show initialization button
   return (
     <div className="w-full max-w-md mx-auto p-4 sm:p-8 bg-black border border-gray-800 shadow-2xl">
       <div className="text-center">
         <h2 className="text-lg sm:text-xl font-mono font-bold text-white mb-4 sm:mb-6 tracking-wider">
           GO_RADIO
         </h2>
+
+        {/* Current Song Display */}
+        {currentSong && (
+          <div className="mb-4 sm:mb-6 p-3 border border-gray-700 bg-gray-900">
+            <p className="text-xs text-gray-500 font-mono mb-1">[NOW PLAYING]</p>
+            <p className="text-sm text-white font-mono truncate">
+              {currentSong.title}
+            </p>
+          </div>
+        )}
 
         {isQueueLoading && (
           <div className="mb-4 sm:mb-6">
@@ -49,7 +54,7 @@ export const RadioInitButton = () => {
           </div>
         )}
 
-        {!isQueueLoading && isWebSocketConnected && (
+        {!isQueueLoading && isWebSocketConnected && queueInfo.Queue?.length > 0 && (
           <div className="mb-6 sm:mb-8">
             <p className="text-white mb-4 sm:mb-6 font-mono text-sm">[SYSTEM READY]</p>
             <button
@@ -92,7 +97,34 @@ export const RadioInitButton = () => {
             ></div>
             WEBSOCKET {isWebSocketConnected ? "[CONNECTED]" : "[CONNECTING...]"}
           </div>
+          <div
+            className={`flex items-center justify-center gap-3 ${
+              queueInfo.Queue?.length > 0 ? "text-white" : "text-gray-500"
+            }`}
+          >
+            <div
+              className={`w-2 h-2 border ${
+                queueInfo.Queue?.length > 0
+                  ? "bg-white border-white"
+                  : "border-gray-500"
+              }`}
+            ></div>
+            AUDIO {queueInfo.Queue?.length > 0 ? "[READY]" : "[LOADING...]"}
+          </div>
         </div>
+
+        {/* Queue Info */}
+        {queueInfo.Queue?.length > 0 && (
+          <div className="mt-6 pt-4 border-t border-gray-700">
+            <p className="text-xs text-gray-500 font-mono mb-2">[QUEUE INFO]</p>
+            <div className="text-xs text-gray-400 font-mono space-y-1">
+              <div>TRACKS: {queueInfo.Queue.length}</div>
+              {queueInfo.Playlist && (
+                <div>PLAYLIST: {queueInfo.Playlist.name}</div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
