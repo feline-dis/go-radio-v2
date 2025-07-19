@@ -98,7 +98,7 @@ func Load() *Config {
 			IdleTimeout:  getDurationEnv("IDLE_TIMEOUT", 60*time.Second),
 		},
 		AWS: AWSConfig{
-			Region:          getEnv("AWS_REGION", "us-east-1"),
+			Region:          getEnv("AWS_REGION", "us-east-2"),
 			AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID", ""),
 			SecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY", ""),
 			BucketName:      getEnv("S3_BUCKET_NAME", ""),

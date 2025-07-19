@@ -4,7 +4,8 @@ import { ReactionProvider } from "./contexts/ReactionContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { VisualizerProvider } from "./contexts/VisualizerContext";
 import { WebSocketProvider } from "./contexts/WebSocketContext";
-import { RadioInitButton } from "./components/RadioInitButton";
+import { IntroPage } from "./pages/IntroPage";
+import { PlayerPage } from "./pages/PlayerPage";
 import { CreatePlaylist } from "./pages/CreatePlaylist";
 import { LoginPage } from "./pages/LoginPage";
 import { AdminPage } from "./pages/AdminPage";
@@ -48,7 +49,7 @@ function AppContent() {
                 </div>
                 <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
                   <Link
-                    to="/"
+                    to="/player"
                     className="border-transparent text-gray-500 hover:text-white hover:border-white inline-flex items-center px-1 pt-1 border-b-2 text-sm font-mono transition-colors"
                   >
                     [PLAYER]
@@ -97,25 +98,18 @@ function AppContent() {
         {/* Main Content */}
         <main className="flex-1 flex items-center justify-center relative z-10">
           <Routes>
-            <Route
-              path="/"
-              element={
-                <div className="w-full flex items-center justify-center p-2 sm:p-4">
-                  <RadioInitButton />
-                </div>
-              }
-            />
+            <Route path="/" element={<IntroPage />} />
+            <Route path="/player" element={<PlayerPage />} />
             <Route path="/playlists/create" element={<CreatePlaylist />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/admin" element={<AdminPage />} />
           </Routes>
         </main>
 
-        {/* Animated Emotes - Rendered at top level for proper z-index */}
+        {/* Animated Emotes and Reaction Bar - Only show on player page */}
         <AnimatedEmotes />
-        
-        {/* Floating Reaction Bar */}
         <ReactionBar />
+        
       </div>
     </Router>
   );

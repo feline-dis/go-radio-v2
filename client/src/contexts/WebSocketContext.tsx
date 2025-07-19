@@ -163,11 +163,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       const ws = new WebSocket(url);
 
       ws.onopen = () => {
-        console.log('WebSocket connected');
         setConnectionState(ConnectionState.CONNECTED);
         reconnectAttemptsRef.current = 0;
         startPingInterval();
-        
+
         // Request current playback state when connected
         sendMessage('get_playback_state', {});
       };
@@ -175,15 +174,13 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       ws.onmessage = (event) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
-          console.log('📨 Received WebSocket message:', message);
-          
+
           // Handle pong messages
           if (message.type === 'pong') {
             return;
           }
 
           // Publish the event through the event bus
-          console.log('📢 Publishing event to event bus:', message.type, message.payload);
           eventBusRef.current.publish(message.type, message.payload);
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
@@ -194,7 +191,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         console.log('WebSocket disconnected:', event.code, event.reason);
         setConnectionState(ConnectionState.DISCONNECTED);
         stopPingInterval();
-        
+
         // Attempt to reconnect if not manually closed
         if (event.code !== 1000 && reconnectAttemptsRef.current < maxReconnectAttempts) {
           setConnectionState(ConnectionState.RECONNECTING);
@@ -222,14 +219,14 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
-    
+
     stopPingInterval();
-    
+
     if (websocketRef.current) {
       websocketRef.current.close(1000, 'Manual disconnect');
       websocketRef.current = null;
     }
-    
+
     setConnectionState(ConnectionState.DISCONNECTED);
     reconnectAttemptsRef.current = 0;
   }, [stopPingInterval]);
@@ -253,7 +250,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   // Auto-connect on mount
   useEffect(() => {
     connect();
-    
+
     return () => {
       disconnect();
       eventBusRef.current.clear();
@@ -302,9 +299,8 @@ export const useWebSocketEvent = <T extends keyof WebSocketEvents>(
   deps: React.DependencyList = []
 ) => {
   const { eventBus } = useWebSocket();
-  
+
   useEffect(() => {
-    console.log("subscribing to event", event);
     const unsubscribe = eventBus.subscribe(event, handler);
     return unsubscribe;
   }, [eventBus, event, ...deps]);
@@ -313,7 +309,7 @@ export const useWebSocketEvent = <T extends keyof WebSocketEvents>(
 // Utility hook for publishing events
 export const useWebSocketPublish = () => {
   const { eventBus, sendMessage } = useWebSocket();
-  
+
   return {
     publish: eventBus.publish.bind(eventBus),
     sendMessage
