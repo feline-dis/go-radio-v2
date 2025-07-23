@@ -238,3 +238,5 @@ docker run -p 8080:8080 go-radio
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+![Repo Activity](https://repobeats.axiom.co/api/embed/d030c6a837fac118dd4d839760b6141b74cf17fb.svg)
